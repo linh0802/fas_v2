@@ -4,18 +4,23 @@
 Hệ thống điểm danh khuôn mặt FaceAttendance là một giải pháp AI/IoT tích hợp, giúp tự động nhận diện, quản lý và lưu trữ thông tin điểm danh bằng khuôn mặt. Hệ thống hỗ trợ giao diện người dùng trực quan (Tkinter), backend API (Flask), đồng bộ dữ liệu với Google Sheets, hỗ trợ mã QR, cảm biến chuyển động PIR, và nhiều tính năng nâng cao khác.
 
 ## Kiến trúc tổng thể
-- **Giao diện người dùng (Tkinter):** Quản lý, thêm mới, điểm danh, xem dữ liệu, huấn luyện lại model.
-- **Nhận diện khuôn mặt (AI):** Sử dụng DeepFace, Facenet, MTCNN, anti-spoofing (Fasnet), nhận diện real-time.
-- **Quản lý dữ liệu:** Lưu trữ thông tin người dùng, ảnh, embedding vào SQLite3, đồng bộ với Google Sheets.
-- **Web backend (Flask):** API phục vụ dữ liệu điểm danh, quản lý người dùng, upload ảnh, xác thực, gửi email QR.
-- **Các thành phần phụ trợ:** TTS (phát âm tên), cảm biến PIR, QR code, logging, xuất/nhập CSV.
+- **Giao diện người dùng (Tkinter, chia module):** Quản lý, thêm mới, điểm danh, xem dữ liệu, huấn luyện lại model. Các frame riêng biệt: Nhận diện, Thêm người, Dữ liệu.
+- **Nhận diện khuôn mặt (AI):** DeepFace, Facenet, MTCNN, anti-spoofing, nhận diện real-time.
+- **Quản lý dữ liệu:** Lưu trữ SQLite3, đồng bộ Google Sheets, xuất/nhập CSV.
+- **Web backend (Flask):** API điểm danh, quản lý người dùng, upload ảnh, xác thực, gửi email QR.
+- **Tối ưu hiệu suất:** batch_size nhỏ, giới hạn luồng OpenCV, sleep trong train, hiển thị CPU/RAM usage trên GUI.
 
-## Sơ đồ luồng hoạt động
-```
-[Webcam] -> [Nhận diện AI] -> [Tkinter GUI] <-> [SQLite3 DB] <-> [Flask API] <-> [Google Sheets]
-                                            |                |
-                                         [QR, TTS, PIR]   [Xuất/nhập CSV]
-```
+## Cấu trúc thư mục chính
+- `gui_modules/`: Các module giao diện (RecognitionFrame, DataEntryFrame, AttendanceDataFrame, ...)
+- `core/`: Nhận diện, anti-spoofing, TTS, cảm biến PIR
+- `database/`: Quản lý database, xuất/nhập CSV, reset, fix lỗi
+- `training/`: Script train, kiểm tra dữ liệu, sinh embedding
+- `web_app/`: Backend Flask, API, xác thực, upload ảnh, gửi email QR
+- `models/`: Model AI, label encoder
+- `images_attendance/`: Ảnh gốc
+- `processed_faces/`: Ảnh đã cắt mặt
+- `logs/`, `training.log`: Log hệ thống, log train
+- `requirements.txt`, `.gitignore`, `README.md`
 
 ## Các tính năng chính
 - **Nhận diện khuôn mặt real-time** với AI, chống giả mạo (anti-spoofing).
@@ -30,9 +35,9 @@ Hệ thống điểm danh khuôn mặt FaceAttendance là một giải pháp AI/
 - **Phát âm tên (TTS)**: Thông báo trạng thái, cảnh báo, xác nhận.
 - **Logging chuyên sâu**: Ghi log hệ thống, log huấn luyện, log điểm danh.
 
-## Hướng dẫn cài đặt
+## Hướng dẫn cài đặt & sử dụng
 ### 1. Yêu cầu hệ thống
-- **Phần cứng:** Raspberry Pi 4/5 hoặc PC, webcam, cảm biến PIR (tùy chọn), loa (TTS), kết nối internet.
+- **Phần cứng:** Raspberry Pi 4/5 hoặc PC, webcam, cảm biến PIR (tùy chọn), loa (TTS), internet.
 - **Phần mềm:** Python 3.8+, pip, các thư viện trong `requirements.txt`.
 
 ### 2. Cài đặt
@@ -49,13 +54,13 @@ $ source .venv/bin/activate
 $ pip install -r requirements.txt
 
 # Khởi tạo database (chỉ lần đầu)
-$ python db.py
+$ python database/db.py
 
 # Chạy backend Flask (API)
 $ python web_app/app.py
 
 # Chạy giao diện người dùng (GUI)
-$ python gui_tkinter.py
+$ python gui_modules/gui_main.py
 ```
 
 ### 3. Cấu hình Google Sheets, Email, Ngrok
@@ -92,17 +97,67 @@ $ python gui_tkinter.py
   - Phát âm tên, cảnh báo, trạng thái hệ thống qua loa.
 
 ## Các file/thư mục quan trọng
-- `gui_tkinter.py`: Giao diện người dùng, quản lý toàn bộ luồng chính.
-- `recognition_class.py`: Nhận diện khuôn mặt, anti-spoofing, pipeline AI.
-- `db.py`: Quản lý database, khởi tạo, đồng bộ, xuất/nhập dữ liệu.
-- `finish_train.py`: Huấn luyện lại model, trích xuất khuôn mặt, sinh embedding.
+- `gui_modules/gui_main.py`: Giao diện chính, quản lý toàn bộ luồng GUI.
+- `gui_modules/recognition_frame.py`, `gui_modules/data_entry_frame.py`, ...: Các frame giao diện (nhận diện, thêm người, dữ liệu...)
+- `core/recognition_class.py`, `core/recognition_simple.py`, `core/smart_tts.py`, ...: Nhận diện khuôn mặt, anti-spoofing, TTS, cảm biến PIR.
+- `database/db.py`, `database/export_users_csv.py`, `database/reset_database.py`, ...: Quản lý database, xuất/nhập CSV, reset, fix lỗi.
+- `training/finish_train.py`, `training/check_training_data.py`: Script train, kiểm tra dữ liệu, sinh embedding.
 - `web_app/app.py`: Backend Flask, API, xác thực, upload ảnh, gửi email QR.
-- `models/`: Chứa model AI, label encoder.
-- `images_attendance/`: Lưu ảnh khuôn mặt gốc.
-- `processed_faces/`: Ảnh đã cắt khuôn mặt, phục vụ train.
-- `logs/`, `training.log`: Log hệ thống, log huấn luyện.
-- `requirements.txt`: Danh sách thư viện cần cài đặt.
-- `credentials/`: Thông tin xác thực Google API.
+- `models/`: Model AI, label encoder.
+- `images_attendance/`: Ảnh gốc.
+- `processed_faces/`: Ảnh đã cắt mặt.
+- `logs/`, `training.log`: Log hệ thống, log train.
+- `requirements.txt`, `.gitignore`, `README.md`
+
+## Cấu trúc thư mục (Cập nhật 2024)
+```
+faceattendance/
+├── core/
+│   ├── recognition_class.py
+│   ├── recognition_simple.py
+│   └── ...
+├── database/
+│   ├── db.py
+│   ├── export_users_csv.py
+│   ├── reset_database.py
+│   └── ...
+├── gui_modules/
+│   ├── gui_main.py
+│   ├── recognition_frame.py
+│   ├── data_entry_frame.py
+│   └── ...
+├── training/
+│   ├── finish_train.py
+│   ├── check_training_data.py
+│   └── ...
+├── web_app/
+│   └── app.py
+├── models/
+├── images_attendance/
+├── processed_faces/
+├── logs/
+├── requirements.txt
+├── .gitignore
+└── README.md
+```
+
+## Hướng dẫn chạy
+```bash
+# Chạy giao diện người dùng (GUI)
+$ python gui_modules/gui_main.py
+
+# Hoặc dùng script khởi động nếu có
+$ python run_gui_modular.py
+
+# Chạy backend Flask (API)
+$ python web_app/app.py
+
+# Khởi tạo database (chỉ lần đầu)
+$ python database/db.py
+
+# Huấn luyện lại model
+$ python training/finish_train.py --smart
+```
 
 ## Yêu cầu phần mềm/phần cứng
 - Python >= 3.8, pip
