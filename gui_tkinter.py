@@ -38,9 +38,9 @@ console_handler.setFormatter(formatter)
 root_logger.addHandler(console_handler)
 
 # Đường dẫn các file/script
-TRAIN_SCRIPT = 'finish_train.py'
+TRAIN_SCRIPT = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'training', 'finish_train.py')
 API_ATTENDANCE_URL = 'http://127.0.0.1:5000/api/attendance'
-WEB_APP_SCRIPT = 'web_app/app.py'
+WEB_APP_SCRIPT = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'web_app', 'app.py')
 
 DARK_BG = '#181a20'
 DARK_PANEL = '#23272f'
@@ -655,7 +655,7 @@ class RecognitionFrame(tk.Frame):
 
         self.qr_capture_popup = None
         self.qr_capture_in_progress = False
-        self.recog_simple = RecognitionSimple(model_path="models/train_FN.h5")
+        self.recog_simple = RecognitionSimple(model_path=os.path.join(os.path.dirname(os.path.abspath(__file__)), "models", "train_FN.h5"))
         self.detected_name = None
         self.detected_confidence = 0
     def _log_on_click(self, event):
@@ -1275,7 +1275,7 @@ class DataEntryFrame(tk.Frame):
         self._log_scroll_start_y = 0
         self._log_scroll_start_view = 0
 
-        self.recog_simple = RecognitionSimple(model_path="models/train_FN.h5")
+        self.recog_simple = RecognitionSimple(model_path=os.path.join(os.path.dirname(os.path.abspath(__file__)), "models", "train_FN.h5"))
         self.detected_name = None
         self.detected_confidence = 0
 
@@ -1449,7 +1449,7 @@ class DataEntryFrame(tk.Frame):
 
     def save_captured_images(self):
         import sqlite3
-        DB_PATH = "database.db"
+        DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "database", "database.db")
         if self.detected_name:  # User đã có
             name = self.detected_name
             valid_count = 0
@@ -1466,7 +1466,7 @@ class DataEntryFrame(tk.Frame):
                 img = cv2.resize(img, (160, 160))
                 pred_name, conf = self.recog_simple.predict_name(img)
                 if pred_name == name and conf > 0.65:
-                    person_dir = os.path.join('images_attendance', f"user_{user_id}")
+                    person_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'images_attendance', f"user_{user_id}")
                     os.makedirs(person_dir, exist_ok=True)
                     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S_%f')
                     filename = os.path.join(person_dir, f"{timestamp}.jpg")
@@ -1493,7 +1493,7 @@ class DataEntryFrame(tk.Frame):
             if user_id is None:
                 messagebox.showerror("Lỗi", "Tên này đã tồn tại, vui lòng nhập tên khác!")
                 return
-            person_dir = os.path.join('images_attendance', f"user_{user_id}")
+            person_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'images_attendance', f"user_{user_id}")
             os.makedirs(person_dir, exist_ok=True)
             valid_count = 0
             duplicate_count = 0
@@ -1609,7 +1609,7 @@ class DataEntryFrame(tk.Frame):
 
     def create_new_user_in_db(self, name):
         import sqlite3
-        DB_PATH = "database.db"
+        DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "database", "database.db")
         conn = sqlite3.connect(DB_PATH)
         cur = conn.cursor()
         # Kiểm tra trùng tên

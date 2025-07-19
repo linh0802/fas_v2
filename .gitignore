@@ -10,6 +10,9 @@ images_attendace
 qr_captures
 loi.txt
 credentials
+logs
+processed_faces
+
 # Distribution / packaging
 .Python
 build/

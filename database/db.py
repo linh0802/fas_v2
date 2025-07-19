@@ -9,6 +9,7 @@ import csv
 import os
 
 DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "database.db")
+CSV_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "users_export.csv")
 
 def get_db_connection():
     """Kết nối database."""
@@ -68,7 +69,7 @@ def export_users_to_csv():
         return False
     
     # Xuất ra file CSV
-    with open('users_export.csv', 'w', encoding='utf-8', newline='') as f:
+    with open(CSV_PATH, 'w', encoding='utf-8', newline='') as f:
         writer = csv.writer(f, delimiter='|')
         for user in users:
             writer.writerow([
@@ -78,14 +79,15 @@ def export_users_to_csv():
                 user['password'] or '1'  # Dùng '1' nếu password rỗng
             ])
     
-    print(f"✅ Đã xuất {len(users)} users ra file: users_export.csv")
+    print(f"✅ Đã xuất {len(users)} users ra file: {CSV_PATH}")
     print("📋 Định dạng file: user_id|username|full_name|password")
     return True
 
 def sync_users_from_csv():
     """Đồng bộ users từ file CSV."""
-    if not os.path.exists('users_export.csv'):
+    if not os.path.exists(CSV_PATH):
         print("⚠️  File users_export.csv không tồn tại")
+        print(f"Đường dẫn: {CSV_PATH}")
         print("🔄 Tự động xuất dữ liệu users từ database...")
         if export_users_to_csv():
             print("✅ Đã tạo file users_export.csv từ database hiện tại")
@@ -99,12 +101,16 @@ def sync_users_from_csv():
     cur = conn.cursor()
     
     added_count = 0
-    with open('users_export.csv', 'r', encoding='utf-8') as f:
+    with open(CSV_PATH, 'r', encoding='utf-8') as f:
         reader = csv.reader(f, delimiter='|')
         for row in reader:
             if len(row) < 4:
                 continue
             user_id, username, full_name, password = row[:4]
+            
+            # Xử lý password rỗng hoặc NULL
+            if not password or password.strip() == "":
+                password = "1"
             
             # Thêm user nếu chưa có username này
             cur.execute("SELECT 1 FROM users WHERE username=?", (username,))
@@ -114,6 +120,9 @@ def sync_users_from_csv():
                     (username, full_name, password)
                 )
                 added_count += 1
+            else:
+                # update password
+                cur.execute("UPDATE users SET password=? WHERE username=?", (password, username))
     
     conn.commit()
     conn.close()
@@ -121,10 +130,11 @@ def sync_users_from_csv():
 
 def sync_face_profiles_from_folders():
     """Đồng bộ ảnh từ thư mục vào database."""
-    images_root = os.path.join(os.path.dirname(os.path.abspath(__file__)), "images_attendance")
+    images_root = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "images_attendance")
     
     if not os.path.exists(images_root):
         print("⚠️  Thư mục images_attendance không tồn tại")
+        print(f"Đường dẫn: {images_root}")
         return
     
     conn = get_db_connection()
@@ -229,6 +239,6 @@ if __name__ == "__main__":
     
     print("\n✅ Hoàn tất khởi tạo database!")
     print("\n📋 LƯU Ý:")
-    print("- File users_export.csv đã được tạo từ database hiện tại")
+    print(f"- File users_export.csv đã được tạo từ database hiện tại tại: {CSV_PATH}")
     print("- Bạn có thể chỉnh sửa file này và chạy lại để đồng bộ")
     print("- Định dạng file: user_id|username|full_name|password")

@@ -11,13 +11,11 @@ Chức năng:
 import os
 import sqlite3
 import json
-from db import get_user_id_to_fullname_mapping
-
-def get_db_connection():
-    """Kết nối database."""
-    conn = sqlite3.connect('database.db')
-    conn.row_factory = sqlite3.Row
-    return conn
+import sys
+import os
+# Thêm thư mục cha vào path để import các module khác
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from .db import get_user_id_to_fullname_mapping, get_db_connection
 
 def show_database_status():
     """Hiển thị trạng thái database hiện tại."""
@@ -337,10 +335,11 @@ def export_fixed_data():
     conn.close()
     
     # Lưu ra file
-    with open('fixed_database_export.json', 'w', encoding='utf-8') as f:
+    json_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'fixed_database_export.json')
+    with open(json_path, 'w', encoding='utf-8') as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
     
-    print(f"✅ Đã export {len(data)} users ra file: fixed_database_export.json")
+    print(f"✅ Đã export {len(data)} users ra file: {json_path}")
     
     # Tạo mapping cho training
     mapping = {}
@@ -348,10 +347,11 @@ def export_fixed_data():
         if user['image_count'] > 0:
             mapping[str(user['user_id'])] = user['full_name']
     
-    with open('user_id_to_fullname_fixed.json', 'w', encoding='utf-8') as f:
+    mapping_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'user_id_to_fullname_fixed.json')
+    with open(mapping_path, 'w', encoding='utf-8') as f:
         json.dump(mapping, f, ensure_ascii=False, indent=2)
     
-    print(f"✅ Đã tạo mapping cho {len(mapping)} users có ảnh: user_id_to_fullname_fixed.json")
+    print(f"✅ Đã tạo mapping cho {len(mapping)} users có ảnh: {mapping_path}")
 
 def main():
     """Menu chính."""

@@ -9,20 +9,28 @@ import sqlite3
 import csv
 import shutil
 from datetime import datetime
+import sys
+# Thêm thư mục cha vào path để import các module khác
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+# Định nghĩa đường dẫn database
+DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "database.db")
+CSV_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "users_export.csv")
 
 def backup_database():
     """Tạo backup database hiện tại trước khi xóa."""
-    if os.path.exists('database.db'):
+    if os.path.exists(DB_PATH):
         backup_name = f"database_backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}.db"
-        shutil.copy2('database.db', backup_name)
+        backup_path = os.path.join(os.path.dirname(__file__), backup_name)
+        shutil.copy2(DB_PATH, backup_path)
         print(f"✅ Đã tạo backup: {backup_name}")
         return backup_name
     return None
 
 def delete_database():
     """Xóa database hiện tại."""
-    if os.path.exists('database.db'):
-        os.remove('database.db')
+    if os.path.exists(DB_PATH):
+        os.remove(DB_PATH)
         print("🗑️  Đã xóa database cũ")
     else:
         print("ℹ️  Không có database để xóa")
@@ -33,14 +41,15 @@ def create_new_database():
     print("=" * 50)
     
     # Kiểm tra file CSV
-    if not os.path.exists('users_export.csv'):
+    if not os.path.exists(CSV_PATH):
         print("❌ File users_export.csv không tồn tại!")
+        print(f"Đường dẫn: {CSV_PATH}")
         print("Vui lòng tạo file users_export.csv với định dạng:")
         print("user_id|username|full_name|password")
         return False
     
     # Tạo database mới
-    conn = sqlite3.connect('database.db')
+    conn = sqlite3.connect(DB_PATH)
     cur = conn.cursor()
     
     # Tạo bảng users
@@ -70,13 +79,17 @@ def create_new_database():
     
     # Import users từ CSV
     added_users = 0
-    with open('users_export.csv', 'r', encoding='utf-8') as f:
+    with open(CSV_PATH, 'r', encoding='utf-8') as f:
         reader = csv.reader(f, delimiter='|')
         for row in reader:
             if len(row) < 4:
                 continue
             
             user_id, username, full_name, password = row[:4]
+            
+            # Xử lý password rỗng hoặc NULL
+            if not password or password.strip() == "":
+                password = "1"
             
             try:
                 cur.execute(
@@ -99,12 +112,13 @@ def sync_images_from_folders():
     print("\n📸 ĐỒNG BỘ ẢNH TỪ THƯ MỤC")
     print("=" * 50)
     
-    images_root = "images_attendance"
+    images_root = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "images_attendance")
     if not os.path.exists(images_root):
         print("⚠️  Thư mục images_attendance không tồn tại")
+        print(f"Đường dẫn: {images_root}")
         return
     
-    conn = sqlite3.connect('database.db')
+    conn = sqlite3.connect(DB_PATH)
     cur = conn.cursor()
     
     added_images = 0
@@ -152,7 +166,7 @@ def show_database_summary():
     print("\n📊 TỔNG QUAN DATABASE MỚI")
     print("=" * 50)
     
-    conn = sqlite3.connect('database.db')
+    conn = sqlite3.connect(DB_PATH)
     cur = conn.cursor()
     
     # Thống kê users
@@ -184,7 +198,7 @@ def show_database_summary():
         print("\n📋 DANH SÁCH USERS CÓ ẢNH:")
         print("-" * 60)
         for user in users_with_images:
-            print(f"User {user['user_id']}: {user['username']} - {user['full_name']} ({user['image_count']} ảnh)")
+            print(f"User {user[0]}: {user[1]} - {user[2]} ({user[3]} ảnh)")
 
 def main():
     print("🔄 RESET DATABASE HOÀN TOÀN")
@@ -222,8 +236,8 @@ def main():
     
     print("\n🎉 RESET DATABASE THÀNH CÔNG!")
     print("Bạn có thể chạy các lệnh sau để kiểm tra:")
-    print("  python check_training_data.py")
-    print("  python finish_train.py")
+    print("  python run_database.py")
+    print("  python run_training.py")
 
 if __name__ == "__main__":
     main() 

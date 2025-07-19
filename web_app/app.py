@@ -43,8 +43,8 @@ import sys, os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from qrcode.constants import ERROR_CORRECT_M
 from qrcode.image.pil import PilImage
-from db import get_db_connection
-from recognition_simple import RecognitionSimple
+from database.db import get_db_connection
+from core.recognition_simple import RecognitionSimple
 
 #sys.stdout = open('/tmp/webapp.log', 'a')
 #sys.stderr = open('/tmp/webapp.log', 'a')
@@ -76,7 +76,7 @@ recognition_simple = None
 def get_recognition_simple():
     global recognition_simple
     if recognition_simple is None:
-        recognition_simple = RecognitionSimple(model_path="models/train_FN.h5")
+        recognition_simple = RecognitionSimple(model_path=os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "models", "train_FN.h5"))
     return recognition_simple
 
 def start_ngrok_tunnel():

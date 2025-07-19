@@ -1,5 +1,6 @@
 import os
 import cv2
+cv2.setNumThreads(1)  # Giới hạn OpenCV chỉ dùng 1 luồng
 import numpy as np
 import logging
 import h5py
@@ -13,19 +14,25 @@ from facenet_pytorch import MTCNN
 from PIL import Image
 import sqlite3
 import json
-from db import get_training_data_summary
+import sys
+import os
+# Thêm thư mục cha vào path để import các module khác
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from database.db import get_training_data_summary
 import sys
 import time
 
 def clear_log_file():
     """Xóa nội dung file training.log."""
-    with open('training.log', 'w') as f:
+    log_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'training.log')
+    with open(log_path, 'w') as f:
         f.write('')
     logging.info("Đã xóa nội dung file training.log")
 
 # Thiết lập logging
+log_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'training.log')
 logging.basicConfig(
-    filename='training.log',
+    filename=log_path,
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s'
 )
@@ -61,7 +68,7 @@ def smart_extract_and_save_faces_from_db(target_size=(160, 160)):
     os.makedirs(processed_faces_dir, exist_ok=True)
     
     # Lấy danh sách ảnh từ DB
-    conn = sqlite3.connect('database.db')
+    conn = sqlite3.connect(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'database', 'database.db'))
     conn.row_factory = sqlite3.Row
     cur = conn.cursor()
     cur.execute('''
@@ -128,6 +135,7 @@ def smart_extract_and_save_faces_from_db(target_size=(160, 160)):
             percent = round((idx / total_images) * 50) if total_images else 0
             logging.info(f"Tiến trình: {idx}/{total_images} ({percent}%)")
             print(f"Tiến trình: {idx}/{total_images} ({percent}%)", flush=True)
+        time.sleep(0.05)  # Giảm tải CPU
     
     logging.info(f"Hoàn thành xử lý ảnh:")
     logging.info(f"- Ảnh mới xử lý: {total_processed}")
@@ -137,7 +145,8 @@ def smart_extract_and_save_faces_from_db(target_size=(160, 160)):
     print(f"Tiến trình: Hoàn thành xử lý ảnh (50%)", flush=True)
     
     # Lưu ánh xạ ra file
-    with open('user_id_to_fullname.json', 'w', encoding='utf-8') as f:
+    json_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'user_id_to_fullname.json')
+    with open(json_path, 'w', encoding='utf-8') as f:
         json.dump(user_id_to_fullname, f, ensure_ascii=False)
     
     return processed_faces_dir
@@ -169,9 +178,9 @@ def process_batch(batch, embedding_model='Facenet512'):
 
 def create_training_data(
     processed_faces_dir,
-    output_train_file='models/train_FN.h5',
+    output_train_file=os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'models', 'train_FN.h5'),
     embedding_model='Facenet512',
-    batch_size=4,
+    batch_size=2,  # Giảm batch_size để giảm tải CPU
     test_size=0.2,
     random_state=42,
     target_size=(160, 160)
@@ -200,7 +209,8 @@ def create_training_data(
             
         logging.info(f"Tìm thấy {len(person_dirs)} thư mục người")
         
-        with open('user_id_to_fullname.json', 'r', encoding='utf-8') as f:
+        json_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'user_id_to_fullname.json')
+        with open(json_path, 'r', encoding='utf-8') as f:
             user_id_to_fullname = json.load(f)
         
         total_embedding_images = 0
@@ -246,7 +256,7 @@ def create_training_data(
                         failed_images.append((image_file, str(e)))
                         continue
                 if batch_images:
-                    with ThreadPoolExecutor(max_workers=2) as executor:  # Giảm tải hệ thống
+                    with ThreadPoolExecutor(max_workers=1) as executor:  # Giảm tải hệ thống tối đa
                         batch_embeddings = executor.submit(process_batch, batch_images, embedding_model).result()
                     for embedding, image_file in zip(batch_embeddings, batch_paths):
                         if embedding:
@@ -263,6 +273,7 @@ def create_training_data(
                             print(f"Tiến trình: {embedding_processed}/{total_embedding_images} ({percent}%)", flush=True)
                     del batch_images
                     gc.collect()
+                time.sleep(0.05)  # Giảm tải CPU
         
         # Sau khi trích xuất embedding xong, log 90%
         logging.info(f"Tiến trình: (90%)")
@@ -299,7 +310,8 @@ def create_training_data(
             
             if failed_images:
                 logging.warning(f"Tổng số ảnh lỗi: {len(failed_images)}")
-                with open('failed_images.log', 'w', encoding='utf-8') as f:
+                log_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'failed_images.log')
+                with open(log_path, 'w', encoding='utf-8') as f:
                     for img, reason in failed_images:
                         f.write(f"{img}: {reason}\n")
             # Đảm bảo in ra đúng 100% khi kết thúc
@@ -331,7 +343,7 @@ def main():
         print("🔍 Kiểm tra dữ liệu training...")
         
         # Import từ check_training_data để tránh trùng lặp
-        from check_training_data import detect_mapping_errors
+        from training.check_training_data import detect_mapping_errors
         
         # Kiểm tra cơ bản
         summary = get_training_data_summary()
@@ -390,9 +402,9 @@ def main():
             processed_faces_dir = smart_extract_and_save_faces_from_db(target_size=(160, 160))
         create_training_data(
             processed_faces_dir=processed_faces_dir,
-            output_train_file="models/train_FN.h5",
+            output_train_file=os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "models", "train_FN.h5"),
             embedding_model='Facenet512',
-            batch_size=4,
+            batch_size=2,
             test_size=0.2
         )
         

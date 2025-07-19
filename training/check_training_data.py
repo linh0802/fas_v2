@@ -8,7 +8,11 @@ import os
 import sys
 import json
 from datetime import datetime
-from db import (
+import sys
+import os
+# Thêm thư mục cha vào path để import các module khác
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from database.db import (
     get_user_id_to_fullname_mapping,
     get_training_data_summary
 )
@@ -32,7 +36,7 @@ def print_training_data_summary():
     
     if summary['users_with_few_images']:
         print()
-        print("⚠️  USERS CÓ ÍT HƠN 5 ẢNH (SẼ BỊ BỎ QUA KHI TRAIN):")
+        print("USERS CÓ ÍT HƠN 5 ẢNH (SẼ BỊ BỎ QUA KHI TRAIN):")
         print("-" * 50)
         for user in summary['users_with_few_images']:
             print(f"User ID: {user['user_id']:3d} | Username: {user['username']:15s} | "
@@ -43,7 +47,8 @@ def validate_training_data():
     import sqlite3
     
     def get_db_connection():
-        conn = sqlite3.connect('database.db')
+        db_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'database', 'database.db')
+        conn = sqlite3.connect(db_path)
         conn.row_factory = sqlite3.Row
         return conn
     
@@ -136,7 +141,8 @@ def export_training_data_info():
     import sqlite3
     
     def get_db_connection():
-        conn = sqlite3.connect('database.db')
+        db_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'database', 'database.db')
+        conn = sqlite3.connect(db_path)
         conn.row_factory = sqlite3.Row
         return conn
     
@@ -178,11 +184,12 @@ def export_training_data_info():
     }
     
     # Lưu ra file
-    with open('training_data_info.json', 'w', encoding='utf-8') as f:
+    json_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'training_data_info.json')
+    with open(json_path, 'w', encoding='utf-8') as f:
         json.dump(summary, f, ensure_ascii=False, indent=2)
     
     conn.close()
-    print(f"Đã export thông tin training data ra file: training_data_info.json")
+    print(f"Đã export thông tin training data ra file: {json_path}")
     return summary
 
 def check_database_status():
@@ -192,9 +199,10 @@ def check_database_status():
     
     # Kiểm tra file CSV
     csv_users = {}
-    if os.path.exists('users_export.csv'):
+    csv_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'database', 'users_export.csv')
+    if os.path.exists(csv_path):
         import csv
-        with open('users_export.csv', 'r', encoding='utf-8') as f:
+        with open(csv_path, 'r', encoding='utf-8') as f:
             reader = csv.reader(f, delimiter='|')
             for row in reader:
                 if len(row) >= 3:
@@ -209,7 +217,8 @@ def check_database_status():
     
     # Kiểm tra database
     import sqlite3
-    conn = sqlite3.connect('database.db')
+    db_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'database', 'database.db')
+    conn = sqlite3.connect(db_path)
     cur = conn.cursor()
     cur.execute("SELECT COUNT(*) FROM users")
     db_user_count = cur.fetchone()[0]
@@ -222,11 +231,12 @@ def check_database_status():
     
     # Kiểm tra thư mục ảnh
     image_folders = []
-    if os.path.exists('images_attendance'):
-        for folder in os.listdir('images_attendance'):
+    images_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'images_attendance')
+    if os.path.exists(images_path):
+        for folder in os.listdir(images_path):
             if folder.startswith('user_'):
                 user_id = folder.split('_')[1]
-                folder_path = os.path.join('images_attendance', folder)
+                folder_path = os.path.join(images_path, folder)
                 image_count = len([f for f in os.listdir(folder_path) 
                                  if f.lower().endswith(('.jpg', '.jpeg', '.png'))])
                 image_folders.append((user_id, image_count))
@@ -249,7 +259,8 @@ def detect_mapping_errors():
     import sqlite3
     
     def get_db_connection():
-        conn = sqlite3.connect('database.db')
+        db_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'database', 'database.db')
+        conn = sqlite3.connect(db_path)
         conn.row_factory = sqlite3.Row
         return conn
     
@@ -327,8 +338,9 @@ def detect_mapping_errors():
         })
     
     # 4. Kiểm tra file user_id_to_fullname.json nếu có
-    if os.path.exists('user_id_to_fullname.json'):
-        with open('user_id_to_fullname.json', 'r', encoding='utf-8') as f:
+    json_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'user_id_to_fullname.json')
+    if os.path.exists(json_path):
+        with open(json_path, 'r', encoding='utf-8') as f:
             training_mapping = json.load(f)
         
         # So sánh với database

@@ -18,9 +18,9 @@ import json
 import queue
 from typing import Callable, Optional
 # Thêm import hàm đọc tên thông minh
-from smart_tts import play_name_smart
+from .smart_tts import play_name_smart
 try:
-    from pir_sensor import PIRSensor
+    from .pir_sensor import PIRSensor
 except (ImportError, RuntimeError) as e:
     PIRSensor = None # Sẽ xử lý nếu không có thư viện RPi.GPIO
 from facenet_pytorch import MTCNN
@@ -456,6 +456,8 @@ class RecognitionSystem:
 # =============================================================================
 class OfflineAttendanceSync:
     def __init__(self, offline_file='offline_attendance.json'):
+        if not os.path.isabs(offline_file):
+            offline_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), offline_file)
         self.offline_file = offline_file
         self.data = []
         self.load_offline_data()

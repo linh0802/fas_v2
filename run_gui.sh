@@ -1,4 +1,4 @@
 #!/bin/bash
 cd "$(dirname "$0")"
 source .venv/bin/activate
-python3 gui_tkinter.py
+python3 run_gui_modular.py

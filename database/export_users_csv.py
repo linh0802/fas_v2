@@ -8,12 +8,11 @@ import os
 import csv
 import sqlite3
 from datetime import datetime
+import sys
+# Thêm thư mục cha vào path để import các module khác
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-def get_db_connection():
-    """Kết nối database."""
-    conn = sqlite3.connect('database.db')
-    conn.row_factory = sqlite3.Row
-    return conn
+from .db import get_db_connection
 
 def export_users_to_csv():
     """Xuất dữ liệu users từ database ra file CSV."""
@@ -21,9 +20,11 @@ def export_users_to_csv():
     print("=" * 50)
     
     # Kiểm tra database có tồn tại không
-    if not os.path.exists('database.db'):
+    db_path = os.path.join(os.path.dirname(__file__), 'database.db')
+    if not os.path.exists(db_path):
         print("❌ Database không tồn tại!")
-        print("Vui lòng chạy 'python db.py' để tạo database trước")
+        print(f"Đường dẫn: {db_path}")
+        print("Vui lòng chạy 'python run_database.py' để tạo database trước")
         return False
     
     conn = get_db_connection()
@@ -39,13 +40,15 @@ def export_users_to_csv():
         return False
     
     # Tạo backup file cũ nếu có
-    if os.path.exists('users_export.csv'):
+    csv_path = os.path.join(os.path.dirname(__file__), 'users_export.csv')
+    if os.path.exists(csv_path):
         backup_name = f"users_export_backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
-        os.rename('users_export.csv', backup_name)
+        backup_path = os.path.join(os.path.dirname(__file__), backup_name)
+        os.rename(csv_path, backup_path)
         print(f"📦 Đã backup file cũ: {backup_name}")
     
     # Xuất ra file CSV
-    with open('users_export.csv', 'w', encoding='utf-8', newline='') as f:
+    with open(csv_path, 'w', encoding='utf-8', newline='') as f:
         writer = csv.writer(f, delimiter='|')
         
         # Hiển thị thông tin trước khi xuất
@@ -65,9 +68,9 @@ def export_users_to_csv():
             # Ghi vào file CSV
             writer.writerow([user_id, username, full_name, password])
     
-    print(f"\n✅ Đã xuất {len(users)} users ra file: users_export.csv")
+    print(f"\n✅ Đã xuất {len(users)} users ra file: {csv_path}")
     print("📋 Định dạng file: user_id|username|full_name|password")
-    print("💡 Bạn có thể chỉnh sửa file này và chạy 'python db.py' để đồng bộ")
+    print("💡 Bạn có thể chỉnh sửa file này và chạy 'python run_database.py' để đồng bộ")
     
     return True
 
@@ -127,9 +130,9 @@ def main():
     if export_users_to_csv():
         print("\n🎉 XUẤT DỮ LIỆU THÀNH CÔNG!")
         print("Bạn có thể:")
-        print("1. Chỉnh sửa file users_export.csv")
-        print("2. Chạy 'python db.py' để đồng bộ")
-        print("3. Chạy 'python reset_database.py' để tạo lại database")
+        print("1. Chỉnh sửa file users_export.csv trong thư mục database/")
+        print("2. Chạy 'python run_database.py' để đồng bộ")
+        print("3. Chạy 'python run_database.py' để tạo lại database")
     else:
         print("\n❌ XUẤT DỮ LIỆU THẤT BẠI!")
 
