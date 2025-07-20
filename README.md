@@ -125,9 +125,6 @@ faceattendance/
 ## Hướng dẫn chạy
 ```bash
 # Chạy giao diện người dùng (GUI)
-$ python gui_modules/gui_main.py
-
-# Hoặc dùng script khởi động nếu có
 $ python run_gui_modular.py
 
 # Chạy backend Flask (API)
@@ -139,11 +136,6 @@ $ python database/db.py
 # Huấn luyện lại model
 $ python training/finish_train.py --smart
 ```
-
-## Yêu cầu phần mềm/phần cứng
-- Python >= 3.8, pip
-- Raspberry Pi 4/5 hoặc PC, webcam, loa, cảm biến PIR (tùy chọn)
-- Kết nối internet để đồng bộ cloud, gửi email, Google Sheets
 
 ## Tài liệu tham khảo
 - [DeepFace](https://github.com/serengil/deepface)
