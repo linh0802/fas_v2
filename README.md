@@ -45,7 +45,7 @@ Hệ thống điểm danh khuôn mặt FaceAttendance là một giải pháp AI/
 ### 2. Cài đặt
 ```bash
 # Clone mã nguồn
-$ git clone <https://github.com/linh0802/fas_v2.git>
+$ git clone https://github.com/linh0802/fas_v2.git
 $ cd faceattendance
 
 # Tạo môi trường ảo (khuyến nghị)
