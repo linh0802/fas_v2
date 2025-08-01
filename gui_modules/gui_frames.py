@@ -64,7 +64,7 @@ class AttendanceDataFrame(tk.Frame):
         self.refresh_btn.pack(side='left', padx=10, ipadx=10, ipady=5)
         self.new_person_btn = ttk.Button(btn_frame, text='Thêm người mới', command=lambda: self.controller.show_frame('DataEntryFrame'))
         self.new_person_btn.pack(side='left', padx=10, ipadx=10, ipady=5)
-        self.back_btn = ttk.Button(btn_frame, text='Quay lại nhận diện', command=lambda: self.controller.show_frame('RecognitionFrame'))
+        self.back_btn = ttk.Button(btn_frame, text='Quay lại nhận diện', command=self.switch_to_recognition)
         self.back_btn.pack(side='right', padx=10, ipadx=10, ipady=5)
 
         # Log hệ thống
@@ -85,6 +85,8 @@ class AttendanceDataFrame(tk.Frame):
         self._log_scroll_start_view = 0
 
     def start_processes(self):
+        # Khởi tạo PIR monitoring cho cửa sổ này
+        self.write_log("[PIR] Bắt đầu giám sát PIR ở cửa sổ xem dữ liệu (timeout: 2 phút)")
         self.load_attendance_data()
 
     def stop_processes(self):
@@ -233,6 +235,10 @@ class AttendanceDataFrame(tk.Frame):
     def _log_on_release(self, event):
         self._log_scroll_start_y = None
         self._log_scroll_start_view = None
+
+    def switch_to_recognition(self):
+        self.stop_processes()
+        self.controller.show_frame('RecognitionFrame')
 
 # Import các frame khác để tránh circular import
 # Các frame được import trong gui_main.py và truyền qua controller 

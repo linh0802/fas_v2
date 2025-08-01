@@ -139,14 +139,27 @@ class DataEntryFrame(tk.Frame):
         self._log_scroll_start_y = 0
         self._log_scroll_start_view = 0
 
+    def write_log(self, msg):
+        self.controller.write_log(msg)
+
     def switch_to_recognition(self):
-        """Chuyển về frame nhận diện và giải phóng webcam"""
-        self.stop_processes()
-        # Đảm bảo webcam được giải phóng hoàn toàn
-        self.controller.release_webcam()
+        """Chuyển về màn hình nhận diện và dừng webcam"""
+        if self.running_webcam:
+            self.write_log("Hệ thống đang chuyển về nhận diện...")
+            self.stop_webcam()
         self.controller.show_frame('RecognitionFrame')
 
     def start_processes(self):
+        # Dừng hoàn toàn hệ thống nhận diện nếu đang chạy
+        recognition_frame = self.controller.frames.get('RecognitionFrame')
+        if recognition_frame and hasattr(recognition_frame, 'running') and recognition_frame.running:
+            self.write_log("[CHUYỂN] Dừng hoàn toàn hệ thống nhận diện khi chuyển sang thêm dữ liệu...")
+            if hasattr(recognition_frame, 'stop_recognition_system_force'):
+                recognition_frame.stop_recognition_system_force()
+        
+        # Khởi tạo PIR monitoring cho cửa sổ này
+        self.write_log("[PIR] Bắt đầu giám sát PIR ở cửa sổ thêm dữ liệu (timeout: 2 phút)")
+        
         self.clear_pending_images() # Reset trạng thái khi frame được hiển thị
         self.name_entry.config(state='normal')  # Đảm bảo Entry luôn ở trạng thái nhập được
         self.name_entry.delete(0, 'end')        # Xóa nội dung cũ

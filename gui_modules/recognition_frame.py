@@ -87,7 +87,7 @@ class RecognitionFrame(tk.Frame):
         
         self.start_btn = ttk.Button(webcam_btn_frame, text='Khởi động', command=self.start_recognition_system)
         self.start_btn.grid(row=0, column=0, padx=2, ipadx=2, ipady=2)
-        self.stop_btn = ttk.Button(webcam_btn_frame, text='Tạm dừng', command=self.stop_recognition_system, state='disabled')
+        self.stop_btn = ttk.Button(webcam_btn_frame, text='Tạm dừng', command=self.stop_recognition_system_force, state='disabled')
         self.stop_btn.grid(row=0, column=1, padx=2, ipadx=2, ipady=2)
         self.new_person_btn = ttk.Button(webcam_btn_frame, text='Thêm người mới', command=self.switch_to_data_entry)
         self.new_person_btn.grid(row=0, column=2, padx=2, ipadx=2, ipady=2)
@@ -95,9 +95,9 @@ class RecognitionFrame(tk.Frame):
         self.attendance_data_btn.grid(row=0, column=3, padx=2, ipadx=2, ipady=2)
         self.exit_btn = ttk.Button(webcam_btn_frame, text='Thoát', command=self.controller.on_exit)
         self.exit_btn.grid(row=0, column=4, padx=2, ipadx=2, ipady=2)
-        self.verbose_logging = tk.BooleanVar(value=False)
-        self.verbose_log_check = ttk.Checkbutton(webcam_btn_frame, text='Log chi tiết', variable=self.verbose_logging, command=self.toggle_verbose_log, style='Verbose.TCheckbutton')
-        self.verbose_log_check.grid(row=0, column=5, padx=2)
+        self.tts_enabled = tk.BooleanVar(value=True)  # Mặc định bật đọc kết quả
+        self.tts_check = ttk.Checkbutton(webcam_btn_frame, text='Đọc kết quả', variable=self.tts_enabled, command=self.toggle_tts, style='Verbose.TCheckbutton')
+        self.tts_check.grid(row=0, column=5, padx=2)
 
     def _setup_variables(self):
         self.recognition_system = None
@@ -128,6 +128,10 @@ class RecognitionFrame(tk.Frame):
         self.recog_simple = RecognitionSimple(model_path="models/train_FN.h5")
         self.detected_name = None
         self.detected_confidence = 0
+        
+        # Thêm biến quản lý trạng thái dừng hoàn toàn
+        self.force_stopped = False
+        self.auto_mode = False
 
     def _setup_touch_support(self):
         # Hỗ trợ cuộn cảm ứng
@@ -146,17 +150,27 @@ class RecognitionFrame(tk.Frame):
     def switch_to_data_entry(self):
         """Chuyển sang màn hình thêm người mới và dừng hệ thống nhận diện"""
         if self.running:
-            self.write_log("[CHUYỂN] Dừng hệ thống nhận diện để chuyển sang thêm người mới...")
-            self.stop_recognition_system()
+            self.write_log("[CHUYỂN] Dừng hoàn toàn hệ thống nhận diện để chuyển sang thêm người mới...")
+            self.stop_recognition_system_force()
         self.controller.show_frame('DataEntryFrame')
 
-    def reset_state(self, log=True):
-        self.stop_recognition_system()
-        
+    def clear_display_data(self):
+        """Xóa dữ liệu hiển thị khuôn mặt - chỉ gọi khi khởi động lại hoàn toàn"""
         self.face_thumbs.clear()
         self.original_faces.clear()
         self.recognized_names.clear()
         self.recognized_faces.clear()
+        self.faces_canvas.delete('all')
+        self.write_log("[XÓA] Đã xóa dữ liệu hiển thị khuôn mặt.")
+
+    def reset_state(self, log=True):
+        self.stop_recognition_system()
+        
+        # KHÔNG xóa dữ liệu hiển thị khuôn mặt đã nhận diện
+        # self.face_thumbs.clear()
+        # self.original_faces.clear()
+        # self.recognized_names.clear()
+        # self.recognized_faces.clear()
         
         self.pir_last_motion_time = 0
         self.pir_idle = True
@@ -165,8 +179,13 @@ class RecognitionFrame(tk.Frame):
         self._fps_frame_count = 0
         self._fps_start_time = time.time()
         
-        self.webcam_status_var.set('Hệ thống sẵn sàng. Nhấn "Khởi động" để bắt đầu.')
-        self.faces_canvas.delete('all')
+        # Reset các biến trạng thái mới
+        self.force_stopped = False
+        self.auto_mode = False
+        
+        self.webcam_status_var.set('Hệ thống sẵn sàng. Đang khởi động...')
+        # KHÔNG xóa faces_canvas để giữ lại hiển thị khuôn mặt
+        # self.faces_canvas.delete('all')
         
         # Xóa hình ảnh webcam và hiển thị frame trống
         idle_frame = self.get_idle_frame()
@@ -191,6 +210,40 @@ class RecognitionFrame(tk.Frame):
         if self.running:
             self.stop_recognition_system()
 
+    def stop_recognition_system_force(self):
+        """Dừng hoàn toàn hệ thống nhận diện - không tự khởi động lại"""
+        self.write_log("Dừng hoàn toàn hệ thống nhận diện...")
+        self.force_stopped = True
+        self.auto_mode = False
+        
+        # Chỉ dừng các thread, không xóa recognition_system ngay
+        self.running = False
+        
+        # Dừng các luồng
+        if hasattr(self, 'webcam_thread') and self.webcam_thread and self.webcam_thread.is_alive():
+            self.webcam_thread.join(timeout=1)
+        if hasattr(self, 'recognition_thread') and self.recognition_thread and self.recognition_thread.is_alive():
+            self.recognition_thread.join(timeout=1)
+        if hasattr(self, 'tts_thread') and self.tts_thread and self.tts_thread.is_alive():
+            self.tts_thread.join(timeout=1)
+        
+        # KHÔNG xóa recognition_system ngay - để có thể lưu dữ liệu
+        # if self.recognition_system:
+        #     if hasattr(self.recognition_system, 'stop'):
+        #         self.recognition_system.stop()
+        #     del self.recognition_system
+        #     self.recognition_system = None
+        #     gc.collect()
+        
+        # KHÔNG giải phóng PIR sensor - để controller quản lý
+        # PIR sẽ tiếp tục hoạt động ở các cửa sổ khác
+        
+        self.start_btn.config(state='normal', text='Khởi động lại')
+        self.stop_btn.config(state='disabled')
+        self.webcam_status_var.set('Hệ thống đã dừng hoàn toàn.')
+        self.controller.release_webcam()
+        self.write_log("Hệ thống đã dừng hoàn toàn. Không tự khởi động lại cho đến khi bấm 'Khởi động lại'.")
+
     def stop_recognition_system(self):
         if not self.running and self.recognition_system is None:
             return
@@ -213,27 +266,23 @@ class RecognitionFrame(tk.Frame):
             self.recognition_system = None
             gc.collect()
         
-        # Giải phóng PIR sensor nếu có
-        if self.pir_sensor:
-            try:
-                self.pir_sensor.release()
-            except Exception as e:
-                self.write_log(f"Lỗi khi giải phóng PIR: {e}")
-            self.pir_sensor = None
+        # KHÔNG giải phóng PIR sensor - để controller quản lý
+        # PIR sẽ tiếp tục hoạt động ở các cửa sổ khác
         
         self.start_btn.config(state='normal', text='Khởi động lại')
         self.stop_btn.config(state='disabled')
         self.webcam_status_var.set('Hệ thống đã dừng.')
         self.controller.release_webcam()
         
-        idle_frame = self.get_idle_frame()
-        img = Image.fromarray(cv2.cvtColor(idle_frame, cv2.COLOR_BGR2RGB))
-        imgtk = ImageTk.PhotoImage(image=img)
-        self.video_label.config(image=imgtk)
-        self._image_references['video_label'] = imgtk
-        for k in list(self._image_references.keys()):
-            if k != 'video_label':
-                del self._image_references[k]
+        # KHÔNG xóa dữ liệu hiển thị khuôn mặt
+        # idle_frame = self.get_idle_frame()
+        # img = Image.fromarray(cv2.cvtColor(idle_frame, cv2.COLOR_BGR2RGB))
+        # imgtk = ImageTk.PhotoImage(image=img)
+        # self.video_label.config(image=imgtk)
+        # self._image_references['video_label'] = imgtk
+        # for k in list(self._image_references.keys()):
+        #     if k != 'video_label':
+        #         del self._image_references[k]
         time.sleep(0.5)
 
     def write_log(self, msg):
@@ -250,27 +299,37 @@ class RecognitionFrame(tk.Frame):
             # Thử lại sau 1 giây
             self.after(1000, self.start_recognition_system)
             return
+            
+        # Reset force_stopped khi bấm khởi động lại
+        if self.force_stopped:
+            self.write_log('=>Reset trạng thái force_stopped và khởi động lại hệ thống...')
+            self.force_stopped = False
+            # Chỉ xóa dữ liệu hiển thị khi khởi động lại hoàn toàn
+            self.clear_display_data()
+            
         self.write_log('=>Khởi động hệ thống nhận diện...')
         self.webcam_status_var.set('Đang khởi tạo các thành phần...')
+        self.auto_mode = True  # Bật chế độ tự động
         threading.Thread(target=self._initialize_system, daemon=True).start()
 
     def _initialize_system(self):
         try:
-            # Nếu đã có pir_sensor cũ thì giải phóng trước khi tạo mới
+            # Sử dụng PIR sensor từ controller thay vì khởi tạo riêng
+            self.pir_sensor = self.controller.get_pir_sensor()
             if self.pir_sensor:
-                try:
-                    self.pir_sensor.release()
-                except Exception as e:
-                    self.write_log(f"Lỗi khi giải phóng PIR cũ: {e}")
-                self.pir_sensor = None
+                self.write_log('=>Sử dụng PIR sensor từ controller.')
+            else:
+                self.write_log('=>Không có PIR sensor.')
             
             # Khởi tạo RecognitionSystem với try-catch riêng
             try:
-                self.recognition_system = RecognitionSystem(gui_log_func=self.write_log)
+                self.recognition_system = RecognitionSystem(gui_log_func=self.write_log, tts_enabled=self.tts_enabled.get())
                 self.recognition_system.attendance_callback = self.handle_callback
-                self.pir_sensor = self.recognition_system.pir_sensor if hasattr(self.recognition_system, 'pir_sensor') else None
-                self.write_log('=>Khởi tạo model và cảm biến thành công.')
+                # Không khởi tạo PIR trong RecognitionSystem nữa
+                self.write_log('=>Khởi tạo model thành công.')
                 self.model_ready = True
+                # Khôi phục dữ liệu nhận diện từ controller SAU KHI khởi tạo
+                self.restore_recognition_data()
             except Exception as e:
                 self.write_log(f"=>Lỗi khởi tạo RecognitionSystem: {e}")
                 self.webcam_status_var.set('Lỗi khởi tạo model.')
@@ -279,27 +338,12 @@ class RecognitionFrame(tk.Frame):
                 self.model_ready = False
                 return
             
-            # Khởi tạo webcam với try-catch riêng
-            try:
-                if not self.controller.initialize_webcam():
-                    self.write_log('=>Không thể mở webcam.')
-                    self.webcam_status_var.set('Lỗi webcam.')
-                    self.start_btn.config(state='normal', text='Khởi động lại')
-                    self.stop_btn.config(state='disabled')
-                    return
-            except Exception as e:
-                self.write_log(f"=>Lỗi khởi tạo webcam: {e}")
-                self.webcam_status_var.set('Lỗi webcam.')
-                self.start_btn.config(state='normal', text='Khởi động lại')
-                self.stop_btn.config(state='disabled')
-                return
-            
-            # Khởi tạo các thread
+            # Khởi tạo các thread (KHÔNG khởi động webcam ngay)
             try:
                 self.running = True
                 self.pir_last_motion_time = time.time()
-                self.pir_idle = False
-                self.webcam_status_var.set('Hệ thống đang nhận diện')
+                self.pir_idle = True  # Bắt đầu ở trạng thái chờ PIR
+                self.webcam_status_var.set('Đang chờ tín hiệu PIR...')
                 self.webcam_thread = threading.Thread(target=self.update_webcam, daemon=True)
                 self.recognition_thread = threading.Thread(target=self.recognition_processing_thread, daemon=True)
                 self.tts_thread = threading.Thread(target=self.tts_processing_thread, daemon=True)
@@ -309,8 +353,9 @@ class RecognitionFrame(tk.Frame):
                 self.update_gui_from_queue()
                 self.start_btn.config(state='disabled', text='Khởi động lại')
                 self.stop_btn.config(state='normal')
-                self.webcam_status_var.set('Hệ thống đang hoạt động')
-                self.write_log("=>Hệ thống nhận diện đã sẵn sàng.")
+                self.write_log("=>Hệ thống nhận diện đã sẵn sàng, đang chờ tín hiệu PIR...")
+                # Reset trạng thái force_stopped khi khởi động thành công
+                self.force_stopped = False
             except Exception as e:
                 self.write_log(f"=>Lỗi khởi tạo thread: {e}")
                 self.running = False
@@ -347,19 +392,56 @@ class RecognitionFrame(tk.Frame):
             self.after(30, self.update_gui_from_queue)
 
     def update_webcam(self):
+        # Kiểm tra PIR lần đầu khi khởi động
+        initial_pir_check = True
+        
         while self.running:
             # Luồng này chỉ đọc frame và đưa vào hàng đợi để xử lý
             now = time.time()
             is_motion = False # Mặc định là không có chuyển động
+            
+            # Kiểm tra PIR sensor từ controller
             if self.pir_sensor:
                 try:
                     # Logic đọc PIR sensor trực tiếp hơn
                     is_motion = self.pir_sensor.is_motion()
+                    
+                    # Kiểm tra PIR lần đầu khi khởi động
+                    if initial_pir_check:
+                        if is_motion:
+                            self.write_log("Phát hiện chuyển động ngay khi khởi động! Khởi động webcam...")
+                            self.pir_idle = False
+                            self.webcam_status_var.set('Hệ thống đang nhận diện')
+                            # Khởi động webcam lần đầu
+                            if not self.controller.get_webcam():
+                                if not self.controller.initialize_webcam():
+                                    self.write_log("Không thể khởi động webcam.")
+                                    time.sleep(1)
+                                    continue
+                        else:
+                            self.write_log("Không có chuyển động khi khởi động, đang chờ tín hiệu PIR...")
+                            self.pir_idle = True
+                            self.webcam_status_var.set('Đang chờ tín hiệu PIR...')
+                        
+                        initial_pir_check = False
+                        
                 except Exception as e:
                     self.write_log(f"Lỗi đọc cảm biến: {e}")
                     is_motion = False 
             else:
+                # Nếu không có PIR sensor, luôn bật webcam
                 is_motion = True
+                if initial_pir_check:
+                    self.write_log("Không có PIR sensor, khởi động webcam ngay...")
+                    self.pir_idle = False
+                    self.webcam_status_var.set('Hệ thống đang nhận diện')
+                    # Khởi động webcam lần đầu
+                    if not self.controller.get_webcam():
+                        if not self.controller.initialize_webcam():
+                            self.write_log("Không thể khởi động webcam.")
+                            time.sleep(1)
+                            continue
+                    initial_pir_check = False
 
             if is_motion:
                 self.pir_last_motion_time = now
@@ -372,7 +454,8 @@ class RecognitionFrame(tk.Frame):
                     if not self.controller.get_webcam():
                         self.controller.initialize_webcam()
             else:
-                if not self.pir_idle and (now - self.pir_last_motion_time > self.pir_timeout):
+                # Chỉ tắt webcam nếu đang ở chế độ tự động và không có chuyển động
+                if self.auto_mode and not self.pir_idle and (now - self.pir_last_motion_time > self.pir_timeout):
                     self.pir_idle = True
                     self.webcam_status_var.set('Đang chờ tín hiệu PIR...')
                     self.controller.release_webcam()
@@ -396,7 +479,7 @@ class RecognitionFrame(tk.Frame):
             
             if not self.controller.get_webcam():
                 if not self.controller.initialize_webcam():
-                    time.sleep(1)
+                    time.sleep(0.1)
                     continue
 
             ret, frame = self.controller.read_webcam_frame()
@@ -450,18 +533,21 @@ class RecognitionFrame(tk.Frame):
             # Giảm tải một chút để tránh 100% CPU
             time.sleep(0.01)
 
-    def toggle_verbose_log(self):
-        """Bật/tắt chế độ log chi tiết."""
-        state = "BẬT" if self.verbose_logging.get() else "TẮT"
-        self.write_log(f"Chế độ log chi tiết đã được {state}.")
-
-    def write_log_verbose(self, msg):
-        """Ghi log chỉ khi chế độ verbose được bật."""
-        if self.verbose_logging.get():
-            self.controller.write_log(f"   [VERBOSE] {msg}")
+    def toggle_tts(self):
+        """Bật/tắt tính năng đọc kết quả."""
+        state = "BẬT" if self.tts_enabled.get() else "TẮT"
+        self.write_log(f"Tính năng đọc kết quả đã được {state}.")
+        
+        # Cập nhật trạng thái TTS trong RecognitionSystem nếu đã khởi tạo
+        if self.recognition_system and hasattr(self.recognition_system, 'tts_enabled'):
+            self.recognition_system.tts_enabled = self.tts_enabled.get()
+            self.write_log(f"Đã cập nhật trạng thái TTS trong hệ thống nhận diện: {state}")
 
     def _play_pir_wait_message(self):
         """Phát âm thông báo PIR thông qua queue"""
+        if not self.tts_enabled.get():
+            return  # Không phát âm nếu TTS bị tắt
+        
         try:
             self.tts_queue.put_nowait("Hệ thống tạm ngưng, đang chờ chuyển động")
         except queue.Full:
@@ -474,7 +560,7 @@ class RecognitionFrame(tk.Frame):
         while self.running:
             try:
                 message = self.tts_queue.get(timeout=1)
-                if message:
+                if message and self.tts_enabled.get():  # Chỉ phát âm khi TTS được bật
                     play_name_smart(message, log_func=self.write_log)
             except queue.Empty:
                 continue
@@ -484,14 +570,12 @@ class RecognitionFrame(tk.Frame):
     def process_and_draw(self, frame):
         if not self.recognition_system: return frame, set(), dict()
         
-        self.write_log_verbose("Gọi recognition_system.detect_and_recognize...")
         faces, qr_codes = self.recognition_system.detect_and_recognize(frame)
-        self.write_log_verbose(f"Kết quả: {len(faces)} khuôn mặt, {len(qr_codes)} QR.")
 
         new_names, new_faces_imgs = set(), dict()
 
         if not faces:
-            self.write_log_verbose("Không phát hiện khuôn mặt nào trong frame.")
+            pass  
 
         for face in faces:
             name = face['name']
@@ -510,7 +594,16 @@ class RecognitionFrame(tk.Frame):
                     'confidence': confidence
                 }
             else:
-                self.write_log_verbose(f"Đã nhận diện '{name}' trước đó, bỏ qua log chính.")
+                pass 
+
+        # Xử lý kết quả QR codes
+        if qr_codes:
+            for qr_code in qr_codes:
+                try:
+                    qr_data = qr_code.data.decode('utf-8')
+                    self.write_log(f"Phát hiện mã QR: {qr_data}")
+                except Exception as e:
+                    self.write_log(f"Lỗi đọc mã QR: {e}")
 
         return frame, new_names, new_faces_imgs
 
@@ -611,8 +704,10 @@ class RecognitionFrame(tk.Frame):
         """
         if isinstance(data, dict) and data.get('type') == 'QR-CAPTURE-REQUEST':
             qr_data = data.get('qr_data')
+            self.write_log(f"Phát hiện mã QR cần xác nhận: {qr_data}")
             # Hiện popup xác nhận ở giữa cửa sổ nhận diện
             if self.qr_capture_in_progress:
+                self.write_log("Đang có popup QR khác, bỏ qua yêu cầu mới")
                 return  # Đang có popup, không hiện thêm
             self.qr_capture_in_progress = True
             self.show_qr_capture_popup(qr_data)
@@ -636,15 +731,20 @@ class RecognitionFrame(tk.Frame):
         label.pack(pady=(30, 10))
         btn = ttk.Button(self.qr_capture_popup, text="Đồng ý", command=lambda: self.capture_qr_images(qr_data))
         btn.pack(pady=(0, 20), ipadx=10, ipady=5)
+        self.write_log("Đã hiển thị popup xác nhận lưu ảnh QR")
 
     def capture_qr_images(self, qr_data):
         if self.qr_capture_popup is not None:
             self.qr_capture_popup.destroy()
             self.qr_capture_popup = None
+        
+        self.write_log(f"Bắt đầu lưu ảnh cho mã QR: {qr_data}")
         os.makedirs('qr_captures', exist_ok=True)
         captured_paths = []
         name = qr_data.split('\n')[0].split(':')[-1].strip() if ':' in qr_data else qr_data.split('\n')[0].strip()
         name_safe = ''.join(c for c in name if c.isalnum() or c in ('-_'))
+        
+        self.write_log(f"Đang chụp 5 ảnh cho: {name}")
         for i in range(5):
             ret, frame = self.controller.read_webcam_frame()
             if ret:
@@ -652,17 +752,80 @@ class RecognitionFrame(tk.Frame):
                 img_path = f"qr_captures/{name_safe}_{ts}_{i+1}.jpg"
                 cv2.imwrite(img_path, frame)
                 captured_paths.append(img_path)
+                self.write_log(f"Đã lưu ảnh {i+1}/5: {img_path}")
             self.update()
             time.sleep(1)
+        
         # Sau khi lưu xong, gọi lại recognition_system để lưu QR lên Google Sheet
         if self.recognition_system is not None:
+            self.write_log(f"Đang lưu điểm danh QR cho: {name}")
             self.recognition_system.save_qr_attendance(qr_data)
+            self.write_log(f"Đã lưu điểm danh QR thành công cho: {name}")
         else:
             self.write_log("recognition_system chưa được khởi tạo, không thể lưu QR.")
             messagebox.showerror("Lỗi", "Hệ thống nhận diện chưa sẵn sàng, không thể lưu QR lên Google Sheet.")
+        
         self.qr_capture_in_progress = False
+        self.write_log(f"Hoàn tất quá trình lưu ảnh QR cho: {name}")
         # Hiện messagebox sau 5 giây
         self.after(5000, lambda: messagebox.showinfo("Hoàn tất", "Đã lưu ảnh thành công!")) 
+
+    def cleanup_recognition_system(self):
+        """Xóa recognition_system sau khi đã lưu dữ liệu"""
+        if self.recognition_system:
+            if hasattr(self.recognition_system, 'stop'):
+                self.recognition_system.stop()
+            del self.recognition_system
+            self.recognition_system = None
+            gc.collect()
+            self.write_log("[DỌN DẸP] Đã xóa recognition_system.")
+
+    def save_recognition_data(self):
+        # Lưu dữ liệu nhận diện vào controller
+        if self.recognition_system:
+            known_persons = list(self.recognition_system.known_persons)
+            attendance_log = getattr(self.recognition_system, 'attendance_log', [])
+            
+            data = {
+                'known_persons': known_persons,
+                'attendance_log': attendance_log,
+                'saved_time': time.time()
+            }
+            self.controller.recognition_data = data
+            self.write_log(f'[LƯU] Đã lưu {len(known_persons)} người đã nhận diện và {len(attendance_log)} bản ghi điểm danh vào controller.')
+        else:
+            # Nếu recognition_system đã bị xóa, thử lấy dữ liệu từ controller
+            existing_data = getattr(self.controller, 'recognition_data', None)
+            if existing_data:
+                self.write_log('[LƯU] RecognitionSystem đã bị xóa, giữ nguyên dữ liệu trong controller.')
+            else:
+                self.write_log('[LƯU] RecognitionSystem chưa được khởi tạo và không có dữ liệu để lưu.')
+
+    def restore_recognition_data(self):
+        # Khôi phục dữ liệu nhận diện từ controller
+        data = getattr(self.controller, 'recognition_data', None)
+        if data and self.recognition_system:
+            # Khôi phục known_persons
+            known_persons = data.get('known_persons', [])
+            self.recognition_system.known_persons = set(known_persons)
+            self.write_log(f'[KHÔI PHỤC] Đã khôi phục {len(known_persons)} người đã nhận diện: {", ".join(known_persons)}')
+            
+            # Khôi phục attendance_log nếu có
+            if hasattr(self.recognition_system, 'attendance_log'):
+                attendance_log = data.get('attendance_log', [])
+                self.recognition_system.attendance_log = attendance_log
+                self.write_log(f'[KHÔI PHỤC] Đã khôi phục {len(attendance_log)} bản ghi điểm danh.')
+            
+            # Cập nhật hiển thị khuôn mặt đã nhận diện (giữ nguyên khung hiện tại)
+            if known_persons:
+                self.write_log(f'[KHÔI PHỤC] Giữ nguyên hiển thị {len(known_persons)} khuôn mặt đã nhận diện.')
+            else:
+                self.write_log('[KHÔI PHỤC] Chưa có người nào được nhận diện trong phiên hiện tại.')
+        else:
+            if not data:
+                self.write_log('[KHÔI PHỤC] Không có dữ liệu nhận diện để khôi phục.')
+            if not self.recognition_system:
+                self.write_log('[KHÔI PHỤC] RecognitionSystem chưa được khởi tạo.')
 
     def _update_sysinfo(self):
         cpu = psutil.cpu_percent()

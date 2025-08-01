@@ -40,6 +40,22 @@ class AttendanceGUI(tk.Tk):
         self.web_running = False
         self.log_queue = queue.Queue()
 
+        # Thêm biến quản lý trạng thái nhận diện tự động
+        self.auto_recognition_enabled = False
+        self.recognition_auto_started = False
+        self.current_frame_name = 'RecognitionFrame'
+        
+        # Thêm quản lý PIR tập trung
+        self.pir_sensor = None
+        self.pir_last_motion_time = time.time()
+        self.pir_idle = True
+        self.pir_timeout = 120  # 2 phút cho các cửa sổ khác
+        self.pir_monitoring = False
+        self.pir_thread = None
+
+        # Lưu trữ dữ liệu nhận diện tập trung
+        self.recognition_data = None
+
         # Đăng ký signal handler để tắt hoàn toàn
         signal.signal(signal.SIGINT, self.signal_handler)
         signal.signal(signal.SIGTERM, self.signal_handler)
@@ -86,6 +102,73 @@ class AttendanceGUI(tk.Tk):
 
     def _setup_web_app(self):
         threading.Thread(target=self.start_web_app, daemon=True).start()
+
+    def initialize_pir_sensor(self):
+        """Khởi tạo PIR sensor tập trung - chỉ khởi tạo một lần"""
+        if self.pir_sensor is not None:
+            return True  # PIR đã được khởi tạo
+            
+        try:
+            from core.pir_sensor import PIRSensor
+            self.write_log('[PIR] Đang khởi tạo cảm biến PIR...')
+            self.pir_sensor = PIRSensor(pin_signal=17)  # GPIO 17
+            self.pir_sensor.start()
+            self.pir_monitoring = True
+            self.pir_thread = threading.Thread(target=self._monitor_pir, daemon=True)
+            self.pir_thread.start()
+            self.write_log('[PIR] Cảm biến PIR đã được khởi tạo thành công.')
+            return True
+        except Exception as e:
+            self.write_log(f'[PIR] Lỗi khởi tạo PIR: {e}')
+            self.pir_sensor = None
+            return False
+
+    def _monitor_pir(self):
+        """Luồng giám sát PIR liên tục"""
+        while self.pir_monitoring:
+            try:
+                if self.pir_sensor:
+                    is_motion = self.pir_sensor.is_motion()
+                    if is_motion:
+                        self.pir_last_motion_time = time.time()
+                        self.pir_idle = False
+                    else:
+                        # Kiểm tra timeout cho các cửa sổ khác
+                        if self.current_frame_name != 'RecognitionFrame':
+                            if time.time() - self.pir_last_motion_time > self.pir_timeout:
+                                self.pir_idle = True
+                                self.write_log('[PIR] Không có chuyển động trong 2 phút, tự động quay lại nhận diện...')
+                                self.after(0, lambda: self.show_frame('RecognitionFrame'))
+                time.sleep(0.5)  # Kiểm tra mỗi 0.5 giây
+            except Exception as e:
+                self.write_log(f'[PIR] Lỗi giám sát PIR: {e}')
+                time.sleep(1)
+
+    def get_pir_sensor(self):
+        """Lấy PIR sensor đã được khởi tạo"""
+        return self.pir_sensor
+
+    def is_pir_motion(self):
+        """Kiểm tra có tín hiệu PIR không"""
+        if self.pir_sensor:
+            try:
+                return self.pir_sensor.is_motion()
+            except:
+                return False
+        return False
+
+    def release_pir_sensor(self):
+        """Giải phóng PIR sensor - chỉ gọi khi thoát hoàn toàn"""
+        if self.pir_sensor:
+            try:
+                self.pir_monitoring = False
+                if self.pir_thread and self.pir_thread.is_alive():
+                    self.pir_thread.join(timeout=2)
+                self.pir_sensor.release()
+                self.pir_sensor = None
+                self.write_log('[PIR] Đã giải phóng PIR sensor.')
+            except Exception as e:
+                self.write_log(f'[PIR] Lỗi khi giải phóng PIR: {e}')
 
     def initialize_webcam(self):
         """Khởi tạo webcam tập trung"""
@@ -142,22 +225,58 @@ class AttendanceGUI(tk.Tk):
         current_frame_key = next((key for key, value in self.frames.items() if value.winfo_ismapped()), None)
         if current_frame_key:
             current_frame_obj = self.frames[current_frame_key]
-            if hasattr(current_frame_obj, 'stop_processes'):
-                current_frame_obj.stop_processes()
+            
+            # Nếu đang từ RecognitionFrame chuyển sang frame khác, lưu dữ liệu TRƯỚC
+            if current_frame_key == 'RecognitionFrame' and frame_name != 'RecognitionFrame':
+                if hasattr(current_frame_obj, 'stop_recognition_system_force'):
+                    self.write_log("[CHUYỂN] Dừng hoàn toàn hệ thống nhận diện khi chuyển sang cửa sổ khác...")
+                    # Lưu dữ liệu nhận diện TRƯỚC KHI dừng bất kỳ thứ gì
+                    if hasattr(current_frame_obj, 'save_recognition_data'):
+                        current_frame_obj.save_recognition_data()
+                    # Dừng các thread
+                    current_frame_obj.stop_recognition_system_force()
+                    # Xóa recognition_system sau khi đã lưu dữ liệu
+                    if hasattr(current_frame_obj, 'cleanup_recognition_system'):
+                        current_frame_obj.cleanup_recognition_system()
+                    self.recognition_auto_started = False
+                else:
+                    # Nếu không có stop_recognition_system_force, vẫn lưu dữ liệu
+                    if hasattr(current_frame_obj, 'save_recognition_data'):
+                        current_frame_obj.save_recognition_data()
+                    if hasattr(current_frame_obj, 'stop_processes'):
+                        current_frame_obj.stop_processes()
+            else:
+                # Cho các frame khác, gọi stop_processes bình thường
+                if hasattr(current_frame_obj, 'stop_processes'):
+                    current_frame_obj.stop_processes()
+
+        # Cập nhật trạng thái frame hiện tại
+        self.current_frame_name = frame_name
 
         # Hiển thị frame mới
         frame = self.frames[frame_name]
 
-        # Reset lại frame nhận diện khi quay lại
+        # Tự động khởi động lại nhận diện nếu đã được bật trước đó
         if frame_name == 'RecognitionFrame':
-            if hasattr(frame, 'reset_state'):
-                frame.reset_state()
+            if self.auto_recognition_enabled and not self.recognition_auto_started:
+                self.write_log("[AUTO] Tự động khởi động lại hệ thống nhận diện...")
+                threading.Thread(target=self._auto_start_recognition, daemon=True).start()
 
         frame.tkraise()
-        
         # Bắt đầu tiến trình của frame mới
         if hasattr(frame, 'start_processes'):
             frame.start_processes()
+
+    def _auto_start_recognition(self):
+        """Tự động khởi động nhận diện"""
+        if self.current_frame_name == 'RecognitionFrame':
+            recognition_frame = self.frames['RecognitionFrame']
+            # Reset force_stopped trước khi auto khởi động lại
+            if hasattr(recognition_frame, 'force_stopped'):
+                recognition_frame.force_stopped = False
+            if hasattr(recognition_frame, 'start_recognition_system'):
+                recognition_frame.start_recognition_system()
+                self.recognition_auto_started = True
 
     def write_log(self, msg):
         timestamp = time.strftime('%H:%M:%S')
@@ -195,6 +314,14 @@ class AttendanceGUI(tk.Tk):
             self.web_running = True
             self.write_log('Web app đã khởi động thành công.')
             
+            # Khởi tạo PIR sensor ngay khi web app khởi động xong
+            self.initialize_pir_sensor()
+            
+            # Tự động khởi động nhận diện sau khi web app khởi động xong
+            self.write_log('[AUTO] Tự động khởi động hệ thống nhận diện...')
+            self.auto_recognition_enabled = True
+            threading.Thread(target=self._auto_start_recognition, daemon=True).start()
+            
         except Exception as e:
             self.write_log(f'Lỗi khởi động web app: {e}')
             self.web_running = False
@@ -206,6 +333,12 @@ class AttendanceGUI(tk.Tk):
             for frame in self.frames.values():
                  if hasattr(frame, 'stop_processes'):
                     frame.stop_processes()
+
+            # Reset recognition_data khi thoát hoàn toàn
+            self.recognition_data = None
+
+            # Giải phóng PIR sensor
+            self.release_pir_sensor()
 
             # Tắt web app một cách mạnh mẽ
             if self.web_process:
@@ -261,6 +394,12 @@ class AttendanceGUI(tk.Tk):
             for frame in self.frames.values():
                  if hasattr(frame, 'stop_processes'):
                     frame.stop_processes()
+
+            # Reset recognition_data khi thoát hoàn toàn
+            self.recognition_data = None
+
+            # Giải phóng PIR sensor
+            self.release_pir_sensor()
 
             # Tắt web app
             if self.web_process:

@@ -31,8 +31,9 @@ os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 _face_attendance_logging_configured = False
 
 class RecognitionSystem:
-    def __init__(self, sheet_name="Attendance", credentials_path='credentials/face-attendance.json', pir_pin=17, gui_log_func=None):
+    def __init__(self, sheet_name="Attendance", credentials_path='credentials/face-attendance.json', pir_pin=17, gui_log_func=None, tts_enabled=True):
         self.gui_log_func = gui_log_func
+        self.tts_enabled = tts_enabled  # Thêm biến quản lý TTS
         self.setup_logging()
         logging.info("Khởi tạo Hệ thống Nhận diện...")
         
@@ -67,18 +68,9 @@ class RecognitionSystem:
         
         self.last_motion_time = None
 
-        # SỬA LẠI LOGIC KHỞI TẠO PIR
+        # KHÔNG khởi tạo PIR sensor riêng - để GUI controller quản lý
         self.pir_sensor = None
-        if PIRSensor:
-            try:
-                self._update_status_and_logs(f"Khởi tạo cảm biến PIR trên chân GPIO {self.PIR_PIN}...")
-                self.pir_sensor = PIRSensor(pin_signal=self.PIR_PIN)
-                self.pir_sensor.start()
-                self._update_status_and_logs("PIR đã khởi động và sẵn sàng.")
-            except Exception as e:
-                self._update_status_and_logs(f"Lỗi khởi tạo PIR: {e}", "error")
-        else:
-            self._update_status_and_logs("Không tìm thấy thư viện cảm biến, bỏ qua PIR.", "warning")
+        self._update_status_and_logs("PIR sensor sẽ được quản lý bởi GUI controller.")
 
         self.offline_syncer = OfflineAttendanceSync()
         self.system_status = "Sẵn sàng"
@@ -183,8 +175,8 @@ class RecognitionSystem:
                 is_real, antispoof_score = self.fasnet.analyze(frame, (x1, y1, w, h))
                 if not is_real or antispoof_score < self.ANTISPOOF_THRESHOLD:
                     all_faces_info.append({'name': 'Fake', 'facial_area': facial_area, 'confidence': antispoof_score})
-                    # Chỉ phát âm nếu antispoof_score < 0.5
-                    if antispoof_score < 0.5:
+                    # Chỉ phát âm nếu antispoof_score < 0.5 và TTS được bật
+                    if antispoof_score < 0.5 and self.tts_enabled:
                         try:
                             play_name_smart("Phát hiện gương mặt giả mạo", log_func=self.gui_log_func if hasattr(self, 'gui_log_func') else None)
                         except Exception as e:
@@ -211,23 +203,30 @@ class RecognitionSystem:
                         except Exception:
                             name = str(predicted_label)
                     logging.info(f"Face {idx}: ĐÃ NHẬN DIỆN: {name} (confidence={confidence})")
+                    
+                    # Kiểm tra xem người này đã được nhận diện trong phiên hiện tại chưa
                     is_duplicate = name in self.known_persons
+                    
                     if not is_duplicate:
+                        # Thêm vào danh sách đã nhận diện và điểm danh
                         self.known_persons.add(name)
+                        logging.info(f"Điểm danh mới: {name} (FACE) - confidence={confidence}")
                         self.log_attendance(name, confidence, "FACE", is_duplicate=False)
                     else:
-                        logging.info(f"Đã điểm danh (trùng): {name} (FACE)")
+                        # Người này đã được nhận diện trong phiên hiện tại
+                        logging.info(f"Đã nhận diện (trùng): {name} (FACE) - không điểm danh lại")
                         # Thông báo điểm danh trùng
-                        try:
-                            play_name_smart("Người này đã được điểm danh rồi", log_func=self.gui_log_func if hasattr(self, 'gui_log_func') else None)
-                        except Exception as e:
-                            logging.error(f"Lỗi khi đọc thông báo duplicate: {e}")
-                        pass
+                        if self.tts_enabled:  # Chỉ phát âm khi TTS được bật
+                            try:
+                                play_name_smart("Người này đã được điểm danh rồi", log_func=self.gui_log_func if hasattr(self, 'gui_log_func') else None)
+                            except Exception as e:
+                                logging.error(f"Lỗi khi đọc thông báo duplicate: {e}")
+                    
                     all_faces_info.append({'name': name, 'facial_area': facial_area, 'confidence': confidence})
                 else:
                     all_faces_info.append({'name': 'Unknown', 'facial_area': facial_area, 'confidence': confidence})
-                    # Chỉ phát âm nếu confidence < 0.5
-                    if confidence < 0.5:
+                    # Chỉ phát âm nếu confidence < 0.5 và TTS được bật
+                    if confidence < 0.5 and self.tts_enabled:
                         try:
                             play_name_smart("Không có thông tin về gương mặt này", log_func=self.gui_log_func if hasattr(self, 'gui_log_func') else None)
                         except Exception as e:
@@ -329,8 +328,7 @@ class RecognitionSystem:
                 logging.error(f"Lỗi ghi Google Sheets: {e}")
         elif is_duplicate:
             logging.info(f"Đã điểm danh (trùng): {name} ({mode})")
-        # Gọi hàm đọc tên thông minh khi điểm danh thành công (không duplicate, chỉ cho FACE)
-        if not is_duplicate and mode == "FACE":
+        if not is_duplicate and mode == "FACE" and self.tts_enabled:
             try:
                 play_name_smart(f"Đã điểm danh thành công {name}", log_func=self.gui_log_func if hasattr(self, 'gui_log_func') else None)
             except Exception as e:
