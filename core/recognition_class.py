@@ -51,6 +51,7 @@ class RecognitionSystem:
         self.log_messages = []
         self.running = False # Sẽ được set True khi run() được gọi
         self.cap = None
+        self.google_sheets_offline = False  # Biến theo dõi trạng thái offline của Google Sheets
 
         # Hàng đợi và callback để giao tiếp với GUI
         self.frame_for_gui = queue.Queue(maxsize=2)
@@ -75,6 +76,13 @@ class RecognitionSystem:
         self.offline_syncer = OfflineAttendanceSync()
         self.system_status = "Sẵn sàng"
         self._update_status_and_logs("Hệ thống nhận diện đã khởi tạo xong.")
+        
+        # Đồng bộ dữ liệu offline khi khởi động
+        if self.offline_syncer.data:
+            logging.info(f"Phát hiện {len(self.offline_syncer.data)} mục dữ liệu offline từ phiên trước.")
+            self.sync_offline_data()
+        else:
+            logging.info("Không có dữ liệu offline từ phiên trước.")
 
     def setup_logging(self, log_dir='logs', max_logs=5):
         global _face_attendance_logging_configured
@@ -319,13 +327,27 @@ class RecognitionSystem:
             confidence_str = f"{float(confidence)*100:.1f} %"
         except Exception:
             confidence_str = str(confidence)
-        record = (datetime.now().strftime("%Y-%m-%d %H:%M:%S"), name, mode, confidence_str)
+        
+        # Lưu timestamp chính xác tại thời điểm điểm danh
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        record = (timestamp, name, mode, confidence_str)
+        
         if not is_duplicate and self.sheet:
             try:
                 self.sheet.append_row(list(record))
                 logging.info(f"Đã lưu lên Sheets: {name} ({mode})")
+                self.google_sheets_offline = False  # Reset trạng thái offline khi thành công
             except Exception as e:
                 logging.error(f"Lỗi ghi Google Sheets: {e}")
+                self.google_sheets_offline = True  # Set trạng thái offline khi có lỗi
+                # Lưu vào offline storage khi Google Sheets lỗi với timestamp chính xác
+                self.offline_syncer.add_attendance(name, confidence, mode, timestamp)
+                logging.info(f"Đã lưu điểm danh offline: {name} ({mode}) - {timestamp}")
+        elif not is_duplicate and not self.sheet:
+            # Khi không có kết nối Google Sheets, lưu offline với timestamp chính xác
+            self.google_sheets_offline = True  # Set trạng thái offline
+            self.offline_syncer.add_attendance(name, confidence, mode, timestamp)
+            logging.info(f"Đã lưu điểm danh offline: {name} ({mode}) - {timestamp}")
         elif is_duplicate:
             logging.info(f"Đã điểm danh (trùng): {name} ({mode})")
         if not is_duplicate and mode == "FACE" and self.tts_enabled:
@@ -334,8 +356,42 @@ class RecognitionSystem:
             except Exception as e:
                 logging.error(f"Lỗi khi đọc tên bằng TTS: {e}")
 
+    def check_internet_connection(self):
+        """Kiểm tra kết nối internet"""
+        try:
+            import urllib.request
+            urllib.request.urlopen('http://www.google.com', timeout=3)
+            return True
+        except:
+            return False
+
+    def sync_offline_data(self):
+        """Đồng bộ dữ liệu offline lên Google Sheets nếu có kết nối"""
+        if not self.offline_syncer.data:
+            return
+            
+        if not self.check_internet_connection():
+            logging.info("Không có kết nối internet, bỏ qua đồng bộ offline.")
+            return
+            
+        if self.sheet:
+            logging.info("Kiểm tra và đồng bộ dữ liệu offline...")
+            # Lưu số lượng dữ liệu trước khi đồng bộ
+            data_count_before = len(self.offline_syncer.data)
+            self.offline_syncer.sync_to_google_sheets(self.sheet)
+            # Nếu đồng bộ thành công (số lượng giảm), reset trạng thái offline
+            if len(self.offline_syncer.data) < data_count_before:
+                self.google_sheets_offline = False
+                logging.info("Đã reset trạng thái offline của Google Sheets.")
+        else:
+            logging.warning("Google Sheets chưa được kết nối, không thể đồng bộ offline.")
+
     def stop(self):
         logging.info("Yêu cầu dừng hệ thống nhận diện...")
+        
+        # Đồng bộ dữ liệu offline trước khi dừng
+        self.sync_offline_data()
+        
         self.running = False
         
         # Không cần join thread ở đây vì vòng lặp sẽ tự kết thúc
@@ -359,8 +415,35 @@ class RecognitionSystem:
             last_check_time = time.time()
             is_idle = False
             self.last_motion_time = time.time()
+            last_sync_time = time.time()  # Thời gian đồng bộ offline cuối cùng
+            last_sheet_check_time = time.time()  # Thời gian kiểm tra Google Sheets cuối cùng
 
             while self.running:
+                # 0. Đồng bộ offline định kỳ (chỉ khi đã phát hiện mất kết nối Google Sheets)
+                current_time = time.time()
+                if self.google_sheets_offline and current_time - last_sync_time > 300:  # 5 phút = 300 giây
+                    logging.info("Đồng bộ offline định kỳ (do đã phát hiện mất kết nối Google Sheets)...")
+                    self.sync_offline_data()
+                    last_sync_time = current_time
+                
+                # 0.1. Kiểm tra và thử kết nối lại Google Sheets định kỳ (chỉ khi đã mất kết nối)
+                if current_time - last_sheet_check_time > 600:  # 10 phút = 600 giây
+                    # Chỉ thử kết nối lại nếu:
+                    # 1. Không có kết nối Google Sheets (self.sheet is None)
+                    # 2. Hoặc đã phát hiện mất kết nối (google_sheets_offline = True)
+                    if (not self.sheet or self.google_sheets_offline) and self.check_internet_connection():
+                        logging.info("Thử kết nối lại Google Sheets...")
+                        try:
+                            self.sheet = self.setup_google_sheets("Attendance", 'credentials/face-attendance.json')
+                            if self.sheet:
+                                logging.info("Kết nối lại Google Sheets thành công!")
+                                # Đồng bộ ngay lập tức nếu có dữ liệu offline
+                                if self.offline_syncer.data:
+                                    self.sync_offline_data()
+                        except Exception as e:
+                            logging.error(f"Không thể kết nối lại Google Sheets: {e}")
+                    last_sheet_check_time = current_time
+                
                 # 1. Quản lý trạng thái PIR và camera
                 if self.pir_sensor:
                     if self.pir_sensor.is_motion():
@@ -478,8 +561,15 @@ class OfflineAttendanceSync:
         except IOError as e:
             logging.error(f"Lỗi ghi file offline: {e}")
 
-    def add_attendance(self, name, confidence, data_type):
-        timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    def add_attendance(self, name, confidence, data_type, timestamp):
+        # Kiểm tra trùng lặp trước khi thêm
+        for existing_row in self.data:
+            if (existing_row['timestamp'] == timestamp and 
+                existing_row['data'] == str(name) and 
+                existing_row['data_type'] == data_type):
+                logging.info(f"Bỏ qua điểm danh trùng lặp: {name} ({data_type}) - {timestamp}")
+                return
+        
         row = {'timestamp': timestamp, 'data': str(name), 'data_type': data_type, 'confidence': float(confidence)}
         self.data.append(row)
         self.save_offline_data()
@@ -487,23 +577,56 @@ class OfflineAttendanceSync:
 
     def sync_to_google_sheets(self, sheet):
         if not self.data:
+            logging.info("Không có dữ liệu offline cần đồng bộ.")
             return
         
         logging.info(f"Bắt đầu đồng bộ {len(self.data)} mục offline lên Google Sheets...")
-        remaining_data = self.data[:]
+        successful_syncs = 0
+        failed_syncs = 0
+        duplicate_syncs = 0
         
-        for row in self.data:
+        # Lấy dữ liệu hiện tại từ Google Sheets để kiểm tra trùng lặp
+        try:
+            existing_data = sheet.get_all_values()
+            existing_records = set()
+            if len(existing_data) > 1:  # Có header + dữ liệu
+                for row in existing_data[1:]:  # Bỏ qua header
+                    if len(row) >= 4:  # Đảm bảo có đủ 4 cột
+                        # Tạo key để kiểm tra trùng lặp: timestamp + name + data_type
+                        key = f"{row[0]}_{row[1]}_{row[2]}"  # timestamp_name_data_type
+                        existing_records.add(key)
+        except Exception as e:
+            logging.warning(f"Không thể lấy dữ liệu hiện tại từ Google Sheets để kiểm tra trùng lặp: {e}")
+            existing_records = set()
+        
+        for i, row in enumerate(self.data[:]):  # Copy list để tránh lỗi khi modify
+            # Tạo key để kiểm tra trùng lặp
+            sync_key = f"{row['timestamp']}_{row['data']}_{row['data_type']}"
+            
+            # Kiểm tra trùng lặp
+            if sync_key in existing_records:
+                logging.info(f"Bỏ qua mục trùng lặp: {row['data']} ({row['data_type']}) - {row['timestamp']}")
+                self.data.remove(row)  # Xóa khỏi danh sách offline
+                duplicate_syncs += 1
+                continue
+            
             try:
                 sheet.append_row([row['timestamp'], row['data'], row['data_type'], f"{row.get('confidence', 0):.4f}"])
-                remaining_data.remove(row)
+                self.data.remove(row)  # Xóa khỏi danh sách sau khi đồng bộ thành công
+                successful_syncs += 1
+                logging.info(f"Đồng bộ thành công: {row['data']} ({row['data_type']}) - {row['timestamp']}")
             except Exception as e:
-                logging.error(f"Lỗi đồng bộ, sẽ thử lại lần sau: {e}")
-                break
+                failed_syncs += 1
+                logging.error(f"Lỗi đồng bộ mục {i+1}: {e}")
+                # Không break để tiếp tục thử các mục khác
+                continue
         
-        if len(remaining_data) != len(self.data):
-            self.data = remaining_data
+        # Lưu lại danh sách còn lại
+        if successful_syncs > 0 or duplicate_syncs > 0:
             self.save_offline_data()
-            logging.info(f"Đồng bộ hoàn tất. Còn lại {len(self.data)} mục chưa đồng bộ.")
+            logging.info(f"Đồng bộ hoàn tất: {successful_syncs} thành công, {duplicate_syncs} trùng lặp, {failed_syncs} thất bại. Còn lại {len(self.data)} mục chưa đồng bộ.")
+        else:
+            logging.warning(f"Không có mục nào được đồng bộ thành công. Sẽ thử lại lần sau.")
 
 # =============================================================================
 # Lớp Fasnet cho anti-spoofing (giữ nguyên, không thay đổi)

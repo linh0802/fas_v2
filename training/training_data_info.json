@@ -1,6 +1,6 @@
 {
   "total_users_with_images": 6,
-  "total_images": 428,
+  "total_images": 416,
   "users_with_few_images": [],
   "training_data": {
     "1": {
@@ -107,7 +107,6 @@
         "/home/pi/Desktop/faceattendance/images_attendance/user_3/20250622_021217_885583.jpg",
         "/home/pi/Desktop/faceattendance/images_attendance/user_3/face_20250703_013216_156340_7.jpg",
         "/home/pi/Desktop/faceattendance/images_attendance/user_3/20250625_174309_198722.jpg",
-        "/home/pi/Desktop/faceattendance/images_attendance/user_3/20250719_115916_420565.jpg",
         "/home/pi/Desktop/faceattendance/images_attendance/user_3/20250621_042453_164999.jpg",
         "/home/pi/Desktop/faceattendance/images_attendance/user_3/face_20250703_013216_143430_3.jpg",
         "/home/pi/Desktop/faceattendance/images_attendance/user_3/face_20250703_021506_237099_3.jpg",
@@ -119,9 +118,7 @@
         "/home/pi/Desktop/faceattendance/images_attendance/user_3/20250622_015734_677722.jpg",
         "/home/pi/Desktop/faceattendance/images_attendance/user_3/20250625_195337_845141.jpg",
         "/home/pi/Desktop/faceattendance/images_attendance/user_3/20250622_133438_149101.jpg",
-        "/home/pi/Desktop/faceattendance/images_attendance/user_3/20250719_115915_951531.jpg",
         "/home/pi/Desktop/faceattendance/images_attendance/user_3/20250505_104202_330901.jpg",
-        "/home/pi/Desktop/faceattendance/images_attendance/user_3/20250719_115914_796394.jpg",
         "/home/pi/Desktop/faceattendance/images_attendance/user_3/20250514_152636_897117.jpg",
         "/home/pi/Desktop/faceattendance/images_attendance/user_3/20250622_133437_532239.jpg",
         "/home/pi/Desktop/faceattendance/images_attendance/user_3/face_20250703_013502_270774_0.jpg",
@@ -138,7 +135,6 @@
         "/home/pi/Desktop/faceattendance/images_attendance/user_3/face_20250703_013502_273522_2.jpg",
         "/home/pi/Desktop/faceattendance/images_attendance/user_3/20250625_195337_850648.jpg",
         "/home/pi/Desktop/faceattendance/images_attendance/user_3/20250625_173952_071474.jpg",
-        "/home/pi/Desktop/faceattendance/images_attendance/user_3/20250719_115913_213339.jpg",
         "/home/pi/Desktop/faceattendance/images_attendance/user_3/20250625_173952_070116.jpg",
         "/home/pi/Desktop/faceattendance/images_attendance/user_3/20250620_014512_159312.jpg",
         "/home/pi/Desktop/faceattendance/images_attendance/user_3/20250622_012832_002626.jpg",
@@ -155,7 +151,6 @@
         "/home/pi/Desktop/faceattendance/images_attendance/user_3/face_20250703_013216_144662_4.jpg",
         "/home/pi/Desktop/faceattendance/images_attendance/user_3/20250505_105019_973358.jpg",
         "/home/pi/Desktop/faceattendance/images_attendance/user_3/20250622_014704_685953.jpg",
-        "/home/pi/Desktop/faceattendance/images_attendance/user_3/20250719_115916_820376.jpg",
         "/home/pi/Desktop/faceattendance/images_attendance/user_3/20250625_174309_195028.jpg",
         "/home/pi/Desktop/faceattendance/images_attendance/user_3/20250622_013650_052433.jpg",
         "/home/pi/Desktop/faceattendance/images_attendance/user_3/20250625_172714_530739.jpg",
@@ -238,7 +233,6 @@
         "/home/pi/Desktop/faceattendance/images_attendance/user_3/face_20250703_025646_760055_7.jpg",
         "/home/pi/Desktop/faceattendance/images_attendance/user_3/face_20250703_015252_122991_9.jpg",
         "/home/pi/Desktop/faceattendance/images_attendance/user_3/face_20250703_021613_914674_2.jpg",
-        "/home/pi/Desktop/faceattendance/images_attendance/user_3/20250719_115915_565469.jpg",
         "/home/pi/Desktop/faceattendance/images_attendance/user_3/20250625_173952_072846.jpg",
         "/home/pi/Desktop/faceattendance/images_attendance/user_3/20250513_112824_761445.jpg",
         "/home/pi/Desktop/faceattendance/images_attendance/user_3/20250622_012832_614945.jpg",
@@ -253,8 +247,6 @@
         "/home/pi/Desktop/faceattendance/images_attendance/user_3/20250622_112731_497548.jpg",
         "/home/pi/Desktop/faceattendance/images_attendance/user_3/20250622_014704_035370.jpg",
         "/home/pi/Desktop/faceattendance/images_attendance/user_3/20250622_021216_340261.jpg",
-        "/home/pi/Desktop/faceattendance/images_attendance/user_3/20250719_115914_407347.jpg",
-        "/home/pi/Desktop/faceattendance/images_attendance/user_3/20250719_115913_640431.jpg",
         "/home/pi/Desktop/faceattendance/images_attendance/user_3/20250625_195337_848808.jpg",
         "/home/pi/Desktop/faceattendance/images_attendance/user_3/20250622_013649_721059.jpg",
         "/home/pi/Desktop/faceattendance/images_attendance/user_3/20250505_003421_817593.jpg",
@@ -262,7 +254,6 @@
         "/home/pi/Desktop/faceattendance/images_attendance/user_3/face_20250703_024328_527240_6.jpg",
         "/home/pi/Desktop/faceattendance/images_attendance/user_3/20250622_012106_931436.jpg",
         "/home/pi/Desktop/faceattendance/images_attendance/user_3/20250625_195337_855076.jpg",
-        "/home/pi/Desktop/faceattendance/images_attendance/user_3/20250719_115915_185422.jpg",
         "/home/pi/Desktop/faceattendance/images_attendance/user_3/face_20250703_014414_097003_1.jpg",
         "/home/pi/Desktop/faceattendance/images_attendance/user_3/face_20250703_014414_104453_7.jpg",
         "/home/pi/Desktop/faceattendance/images_attendance/user_3/20250622_112730_270882.jpg",
@@ -411,11 +402,8 @@
         "/home/pi/Desktop/faceattendance/images_attendance/user_3/face_20250703_020955_279386_7.jpg",
         "/home/pi/Desktop/faceattendance/images_attendance/user_3/20250625_163058_657711.jpg",
         "/home/pi/Desktop/faceattendance/images_attendance/user_3/20250505_104202_326838.jpg",
-        "/home/pi/Desktop/faceattendance/images_attendance/user_3/20250719_115914_016415.jpg",
         "/home/pi/Desktop/faceattendance/images_attendance/user_3/face_20250703_020955_280634_9.jpg",
-        "/home/pi/Desktop/faceattendance/images_attendance/user_3/20250622_014141_977096.jpg",
-        "/home/pi/Desktop/faceattendance/images_attendance/user_3/face_20250719_134430_109153_1.jpg",
-        "/home/pi/Desktop/faceattendance/images_attendance/user_3/face_20250719_134430_124174_9.jpg"
+        "/home/pi/Desktop/faceattendance/images_attendance/user_3/20250622_014141_977096.jpg"
       ]
     },
     "4": {
