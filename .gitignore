@@ -6,7 +6,7 @@ __pycache__/
 # C extensions
 *.so
 #FIle
-images_attendace
+images_attendance
 qr_captures
 loi.txt
 credentials

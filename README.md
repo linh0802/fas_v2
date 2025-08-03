@@ -144,3 +144,13 @@ $ python training/finish_train.py --smart
 - [Google Sheets API](https://developers.google.com/sheets/api)
 - [Tkinter](https://docs.python.org/3/library/tkinter.html)
 - [OpenCV](https://opencv.org/)
+
+## Phân tích chi tiết code hệ thống
+
+> Xem giải thích chi tiết từng phần code tại các file sau:
+
+- [DETAILED_CODE_ANALYSIS_PART1.md](DETAILED_CODE_ANALYSIS_PART1.md) — Core Module (Nhận diện, offline sync, anti-spoofing)
+- [DETAILED_CODE_ANALYSIS_PART2.md](DETAILED_CODE_ANALYSIS_PART2.md) — GUI Modules (Giao diện, cảm biến, TTS)
+- [DETAILED_CODE_ANALYSIS_PART3.md](DETAILED_CODE_ANALYSIS_PART3.md) — Web Application (Flask, API, QR code)
+- [DETAILED_CODE_ANALYSIS_PART4.md](DETAILED_CODE_ANALYSIS_PART4.md) — Database & Training (Quản lý dữ liệu, training model)
+- [DETAILED_CODE_ANALYSIS_PART5.md](DETAILED_CODE_ANALYSIS_PART5.md) — Hỗ trợ & Cấu hình (Config, utilities, security, performance)
