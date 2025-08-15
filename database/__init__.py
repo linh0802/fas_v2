@@ -2,6 +2,7 @@
 from .fix_database import main as fix_db
 from .export_users_csv import main as export_users
 from .reset_database import main as reset_db
+from .manage_users import manage_users
 from .db import (
     get_db_connection,
     init_db,
@@ -16,6 +17,7 @@ __all__ = [
     'fix_db',
     'export_users', 
     'reset_db',
+    'manage_users',
     'get_db_connection',
     'init_db',
     'export_users_to_csv',

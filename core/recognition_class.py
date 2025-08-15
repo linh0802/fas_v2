@@ -31,17 +31,17 @@ os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 _face_attendance_logging_configured = False
 
 class RecognitionSystem:
-    def __init__(self, sheet_name="Attendance", credentials_path='credentials/face-attendance.json', pir_pin=17, gui_log_func=None, tts_enabled=True):
+    def __init__(self, sheet_name="Attendance", credentials_path='credentials/face-attendance.json', pir_pin=17, gui_log_func=None, tts_enabled=True, log_filename=None):
         self.gui_log_func = gui_log_func
         self.tts_enabled = tts_enabled  # Thêm biến quản lý TTS
-        self.setup_logging()
+        self.setup_logging(log_filename=log_filename)
         logging.info("Khởi tạo Hệ thống Nhận diện...")
         
         self.known_persons = set()
         self.known_qr_codes = set()
         
         # Cấu hình
-        self.FACE_RECOGNITION_THRESHOLD = 0.65
+        self.FACE_RECOGNITION_THRESHOLD = 0.75
         self.ANTISPOOF_THRESHOLD = 0.6
         self.MIN_FACE_SIZE = 50
         self.PIR_PIN = pir_pin
@@ -84,16 +84,20 @@ class RecognitionSystem:
         else:
             logging.info("Không có dữ liệu offline từ phiên trước.")
 
-    def setup_logging(self, log_dir='logs', max_logs=5):
+    def setup_logging(self, log_dir='logs', max_logs=5, log_filename=None):
         global _face_attendance_logging_configured
         os.makedirs(log_dir, exist_ok=True)
-        log_files = sorted(
-            [f for f in os.listdir(log_dir) if f.startswith('face_recognition_') and f.endswith('.log')],
-            key=lambda x: os.path.getmtime(os.path.join(log_dir, x)), reverse=True
-        )
-        for old_log in log_files[max_logs:]:
-            os.remove(os.path.join(log_dir, old_log))
-        log_filename = os.path.join(log_dir, f"face_recognition_{time.strftime('%Y%m%d_%H%M%S')}.log")
+        
+        # Nếu không có log_filename được truyền vào, tạo tên mới
+        if log_filename is None:
+            log_files = sorted(
+                [f for f in os.listdir(log_dir) if f.startswith('face_recognition_') and f.endswith('.log')],
+                key=lambda x: os.path.getmtime(os.path.join(log_dir, x)), reverse=True
+            )
+            for old_log in log_files[max_logs:]:
+                os.remove(os.path.join(log_dir, old_log))
+            log_filename = os.path.join(log_dir, f"face_recognition_{time.strftime('%Y%m%d_%H%M%S')}.log")
+        
         # --- Sửa cấu hình logging ---
         root_logger = logging.getLogger()
         if not _face_attendance_logging_configured:
@@ -765,5 +769,11 @@ class Fasnet:
             return org_img
 
 if __name__ == '__main__':
-    rec_system = RecognitionSystem()
+    # Tạo tên file log duy nhất cho standalone mode
+    import os
+    import time
+    os.makedirs('logs', exist_ok=True)
+    log_filename = os.path.join('logs', f"face_recognition_{time.strftime('%Y%m%d_%H%M%S')}.log")
+    
+    rec_system = RecognitionSystem(log_filename=log_filename)
     rec_system.run() 

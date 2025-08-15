@@ -101,6 +101,11 @@ def smart_extract_and_save_faces_from_db(target_size=(160, 160)):
         
         # Kiểm tra xem ảnh đã được xử lý chưa và có cần xử lý lại không
         need_process = True
+        # Nếu ảnh gốc không còn tồn tại, bỏ qua an toàn
+        if not os.path.exists(image_path):
+            logging.warning(f"Ảnh không tồn tại trên disk, bỏ qua: {image_path}")
+            total_failed += 1
+            continue
         if os.path.exists(output_path):
             # So sánh thời gian sửa đổi
             original_mtime = os.path.getmtime(image_path)

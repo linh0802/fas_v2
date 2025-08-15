@@ -323,7 +323,8 @@ class RecognitionFrame(tk.Frame):
             
             # Khởi tạo RecognitionSystem với try-catch riêng
             try:
-                self.recognition_system = RecognitionSystem(gui_log_func=self.write_log, tts_enabled=self.tts_enabled.get())
+                from .gui_config import LOG_FILENAME
+                self.recognition_system = RecognitionSystem(gui_log_func=self.write_log, tts_enabled=self.tts_enabled.get(), log_filename=LOG_FILENAME)
                 self.recognition_system.attendance_callback = self.handle_callback
                 # Không khởi tạo PIR trong RecognitionSystem nữa
                 self.write_log('=>Khởi tạo model thành công.')
@@ -537,11 +538,17 @@ class RecognitionFrame(tk.Frame):
         """Bật/tắt tính năng đọc kết quả."""
         state = "BẬT" if self.tts_enabled.get() else "TẮT"
         self.write_log(f"Tính năng đọc kết quả đã được {state}.")
-        
         # Cập nhật trạng thái TTS trong RecognitionSystem nếu đã khởi tạo
         if self.recognition_system and hasattr(self.recognition_system, 'tts_enabled'):
             self.recognition_system.tts_enabled = self.tts_enabled.get()
             self.write_log(f"Đã cập nhật trạng thái TTS trong hệ thống nhận diện: {state}")
+        # Nếu tắt TTS, xóa queue để tránh phát message cũ khi bật lại
+        if not self.tts_enabled.get():
+            try:
+                while not self.tts_queue.empty():
+                    self.tts_queue.get_nowait()
+            except Exception:
+                pass
 
     def _play_pir_wait_message(self):
         """Phát âm thông báo PIR thông qua queue"""

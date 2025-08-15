@@ -1,4 +1,3 @@
-### Các thư viện cần thiết cho hệ thống điểm danh
 # gspread - Thư viện thao tác với Google Sheets API
 import gspread
 # Credentials - Xác thực tài khoản dịch vụ Google
@@ -45,6 +44,9 @@ from qrcode.constants import ERROR_CORRECT_M
 from qrcode.image.pil import PilImage
 from database.db import get_db_connection
 from core.recognition_simple import RecognitionSimple
+
+# Load biến môi trường từ file .env
+load_dotenv()
 
 #sys.stdout = open('/tmp/webapp.log', 'a')
 #sys.stderr = open('/tmp/webapp.log', 'a')
@@ -181,7 +183,10 @@ def login():
 @app.route('/logout')  # Thêm route để đăng xuất thủ công
 def logout():
     session.pop('logged_in', None)
-    return render_template('login.html')
+    session.pop('user_id', None)
+    session.pop('username', None)
+    session.pop('full_name', None)
+    return redirect(url_for('index'))
 
 @app.route('/train_face')
 @login_required
@@ -213,6 +218,11 @@ def save_face():
     if recog.label_encoder is not None:
         all_names = set(recog.label_encoder.inverse_transform(recog.train_data['labels']))
         user_in_model = full_name.strip().lower() in [n.strip().lower() for n in all_names]
+        print(f"🔍 Kiểm tra user '{full_name}' trong model:")
+        print(f"   - Có trong model: {user_in_model}")
+        print(f"   - Tất cả names trong model: {list(all_names)}")
+        print(f"   - User names (lowercase): {[n.strip().lower() for n in all_names]}")
+        print(f"   - User hiện tại (lowercase): {full_name.strip().lower()}")
 
     valid_images = []
     invalid_indices = []
@@ -229,30 +239,46 @@ def save_face():
             face_img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
             face_img = cv2.resize(face_img, (160, 160))
             name, confidence = recog.predict_name(face_img)
-            log_messages.append(f"Ảnh {idx}: {name} (conf={confidence:.2f})")
-            if name == "Unknown" or confidence <= 0.65:
+            log_messages.append(f"Ảnh {idx}: Nhận diện = {name} (conf={confidence:.2f}), User hiện tại = {full_name}")
+            # Chỉ từ chối ảnh hoàn toàn không thể xử lý
+            if name == "Unknown" and confidence <= 0.3:
                 invalid_indices.append(idx)
+                log_messages.append(f"Ảnh {idx}: Không thể nhận diện được khuôn mặt (conf={confidence:.2f})")
                 continue
-            # Nếu user đã có trong model, chỉ lưu nếu đúng tên
+            # Nếu user đã có trong model, kiểm tra kép: đúng user + không trùng user khác
             if user_in_model:
+                # 1. Kiểm tra độ tin cậy
                 if confidence < recog.FACE_RECOGNITION_THRESHOLD:
                     invalid_indices.append(idx)
-                    log_messages.append(f"Ảnh {idx}: Không đủ độ tin cậy.")
+                    log_messages.append(f"Ảnh {idx}: Không đủ độ tin cậy (conf={confidence:.2f} < {recog.FACE_RECOGNITION_THRESHOLD}).")
                     continue
+                
+                # 2. Kiểm tra tên có đúng user không
                 if name.strip().lower() != full_name.strip().lower():
                     invalid_indices.append(idx)
-                    log_messages.append(f"Ảnh {idx}: Không trùng tên user.")
+                    log_messages.append(f"Ảnh {idx}: Không trùng tên user (nhận diện: {name}, user hiện tại: {full_name}).")
                     continue
-                valid_images.append((idx, img))
-                log_messages.append(f"Ảnh {idx}: Nhận diện thành công cho user {full_name}.")
-            else:
-                # Nếu user chưa có trong model, chỉ lưu nếu không trùng ai
-                if confidence >= recog.FACE_RECOGNITION_THRESHOLD:
+                
+                # 3. Kiểm tra có trùng với user khác không (độ tin cậy cao)
+                if confidence >= recog.FACE_RECOGNITION_THRESHOLD and name.strip().lower() != full_name.strip().lower():
                     invalid_indices.append(idx)
-                    log_messages.append(f"Ảnh {idx}: Gương mặt này đã trùng user ({name}), không được phép lưu.")
+                    log_messages.append(f"Ảnh {idx}: Gương mặt này trùng với user khác ({name}), không được phép lưu.")
                     continue
+                
+                # Tất cả điều kiện đều thỏa mãn
                 valid_images.append((idx, img))
-                log_messages.append(f"Ảnh {idx}: Đã lưu ảnh thành công cho user mới.")
+                log_messages.append(f"Ảnh {idx}: Nhận diện thành công cho user {full_name} (conf={confidence:.2f}).")
+            else:
+                # Nếu user chưa có trong model, chỉ lưu nếu KHÔNG trùng với user nào khác
+                if name != "Unknown" and confidence >= recog.FACE_RECOGNITION_THRESHOLD:
+                    # Ảnh này đã được nhận diện là user khác
+                    invalid_indices.append(idx)
+                    log_messages.append(f"Ảnh {idx}: Gương mặt này đã trùng user ({name}), không được phép lưu cho user mới.")
+                    continue
+                
+                # Nếu là Unknown hoặc confidence thấp, có thể lưu cho user mới
+                valid_images.append((idx, img))
+                log_messages.append(f"Ảnh {idx}: Đã lưu ảnh thành công cho user mới {full_name} (conf={confidence:.2f}, name={name}).")
         except Exception as e:
             log_messages.append(f"Ảnh {idx}: Lỗi nhận diện: {e}")
             invalid_indices.append(idx)
@@ -441,10 +467,6 @@ def api_attendance():
     except Exception as e:
         print(f"Lỗi API attendance: {e}")
         return jsonify({'error': str(e)}), 500
-
-@app.route('/contact')
-def contact():
-    return render_template('contact.html')
 
 if __name__ == '__main__':
     # Đăng ký hàm cleanup để chạy khi thoát chương trình

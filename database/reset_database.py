@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-Script xóa toàn bộ database và tạo lại từ file CSV.
-Sử dụng khi database bị lỗi nghiêm trọng và cần reset hoàn toàn.
+Script reset database - xóa tất cả dữ liệu và tạo lại từ đầu.
+Sử dụng khi cần làm sạch hoàn toàn database.
 """
 
 import os
@@ -13,8 +13,9 @@ import sys
 # Thêm thư mục cha vào path để import các module khác
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-# Định nghĩa đường dẫn database
-DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "database.db")
+# Sử dụng đường dẫn từ config
+from config import get_database_path
+DB_PATH = get_database_path()
 CSV_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "users_export.csv")
 
 def backup_database():

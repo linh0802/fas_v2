@@ -8,18 +8,20 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 # Tạo thư mục logs nếu chưa có
 os.makedirs('logs', exist_ok=True)
-log_filename = datetime.now().strftime('logs/face_recognition_%Y%m%d_%H%M%S.log')
+
+# Tạo tên file log duy nhất cho toàn bộ phiên làm việc
+LOG_FILENAME = datetime.now().strftime('logs/face_recognition_%Y%m%d_%H%M%S.log')
 
 # Cấu hình logging
 root_logger = logging.getLogger()
 root_logger.setLevel(logging.INFO)
-formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s', datefmt='%Y-%m-%d %H:%M:%S')
 
 # Xóa tất cả handler cũ (nếu có)
 for handler in root_logger.handlers[:]:
     root_logger.removeHandler(handler)
 
-file_handler = logging.FileHandler(log_filename, encoding='utf-8')
+file_handler = logging.FileHandler(LOG_FILENAME, encoding='utf-8')
 file_handler.setFormatter(formatter)
 root_logger.addHandler(file_handler)
 

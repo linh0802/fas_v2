@@ -69,7 +69,9 @@
                             <a href="#">Nhân viên</a>
                             <ul>
                                 <li><a href="{{ url_for('face_data') }}">Dữ liệu điểm danh</a></li>
-                                <li><a href="{{ url_for('train_face_page') }}">Nhập dữ liệu nhận diện</a></li>
+                                {% if not session.get('logged_in') %}
+                                    <li><a href="{{ url_for('train_face_page') }}">Nhập dữ liệu nhận diện</a></li>
+                                {% endif %}
                             </ul>
                         </li>
                         <li>
@@ -78,7 +80,17 @@
                                 <li><a href="{{ url_for('guest_register') }}">Tạo mã QR</a></li>
                             </ul>
                         </li>
-                        <li><a href="{{ url_for('contact') }}">Liên hệ</a></li>
+                        {% if session.get('logged_in') %}
+                            <li>
+                                <a href="#">Tài khoản ({{ session.get('username', '') }})</a>
+                                <ul>
+                                    <li><a href="{{ url_for('train_face_page') }}">Nhập dữ liệu nhận diện</a></li>
+                                    <li><a href="{{ url_for('logout') }}">Đăng xuất</a></li>
+                                </ul>
+                            </li>
+                        {% else %}
+                            <li><a href="{{ url_for('login') }}">Đăng nhập</a></li>
+                        {% endif %}
                     </ul>
                 </nav>
             </div>
@@ -114,7 +126,7 @@
 
             <div class="video-wrap">
                 <video autoplay loop muted class="custom-video" poster="">
-                    <source src="{{ url_for('static', filename='videos/web.mp4') }}" type="video/mp4">
+                    <source src="{{ url_for('static', filename='videos/video.mp4') }}" type="video/mp4">
                     Your browser does not support the video tag.
                 </video>
             </div>

@@ -18,6 +18,7 @@ import os
 # Thêm thư mục cha vào path để import các module khác
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from core.recognition_simple import RecognitionSimple
+from config import get_database_path
 class DataEntryFrame(tk.Frame):
     def __init__(self, parent, controller):
         super().__init__(parent, bg=DARK_BG)
@@ -56,6 +57,12 @@ class DataEntryFrame(tk.Frame):
         self.recog_simple = RecognitionSimple(model_path=os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "models", "train_FN.h5"))
         self.detected_name = None
         self.detected_confidence = 0
+        
+        # Khởi tạo các biến auto-detect
+        self._auto_detect_running = False
+        self._auto_detect_names = []
+        self._auto_detect_confs = []
+        self._auto_detect_frame_count = 0
 
     def _setup_ui(self):
         # --- Layout chính 2 cột ---
@@ -109,6 +116,7 @@ class DataEntryFrame(tk.Frame):
         self.name_entry = tk.Entry(entry_frame, font=('Arial', 14), width=25)
         self.name_entry.pack(side='left')
         self.name_entry.bind("<Button-1>", self.show_keyboard_frame)
+        self.name_entry.bind("<KeyRelease>", self.check_user_status)
 
         self.btn_frame = tk.Frame(controls_frame, bg=DARK_BG)
         self.btn_frame.pack(pady=5)
@@ -171,6 +179,8 @@ class DataEntryFrame(tk.Frame):
         self._auto_detect_names = []  # Danh sách lưu kết quả tên predict
         self._auto_detect_confs = []  # Danh sách lưu xác suất
         self._auto_detect_frame_count = 0
+        # Reset trạng thái nút auto_detect
+        self.auto_detect_btn.config(state='normal', text='Nhận diện tự động')
 
     def auto_detect_face_loop(self):
         # Nhận diện 10 frame đầu tiên khi vào giao diện, lấy tên xuất hiện nhiều nhất
@@ -190,12 +200,30 @@ class DataEntryFrame(tk.Frame):
                 avg_conf = sum([c for n, c in zip(self._auto_detect_names, self._auto_detect_confs) if n == most_common_name]) / count
                 self.detected_confidence = avg_conf
                 self._auto_detect_running = False
+                self.auto_detect_btn.config(state='normal', text='Nhận diện tự động')
                 self.controller.write_log(f"Đã nhận diện: {most_common_name} (trung bình {avg_conf:.2f})")
             else:
+                # Kiểm tra xem có phải người đã có trong database nhưng chưa có ảnh không
+                DB_PATH = get_database_path()
+                conn = sqlite3.connect(DB_PATH)
+                cur = conn.cursor()
+                cur.execute("SELECT username FROM users")
+                existing_users = [row[0] for row in cur.fetchall()]
+                conn.close()
+                
+                # Đếm số frame có khuôn mặt
+                face_frames = sum(1 for conf in self._auto_detect_confs if conf > 0.3)  # Ngưỡng thấp hơn để phát hiện khuôn mặt
+                
+                if face_frames >= 5:  # Có ít nhất 5 frame có khuôn mặt
+                    self.controller.write_log("Phát hiện khuôn mặt nhưng chưa nhận diện được. Có thể là người mới hoặc người chưa có ảnh trong hệ thống.")
+                    self.name_entry.config(state='normal')
+                    self.detected_name = None
+                else:
+                    self.controller.write_log("Không phát hiện khuôn mặt rõ ràng, vui lòng điều chỉnh vị trí.")
+                    self.name_entry.config(state='normal')
+                    self.detected_name = None
                 self._auto_detect_running = False
-                self.name_entry.config(state='normal')
-                self.detected_name = None
-                self.controller.write_log("Không nhận diện được ai, vui lòng nhập tên mới.")
+                self.auto_detect_btn.config(state='normal', text='Nhận diện tự động')
             return
         ret, frame = self.controller.read_webcam_frame()
         if ret:
@@ -205,6 +233,11 @@ class DataEntryFrame(tk.Frame):
             self._auto_detect_names.append(name)
             self._auto_detect_confs.append(conf)
             self._auto_detect_frame_count += 1
+            
+            # Hiển thị tiến trình
+            progress = (self._auto_detect_frame_count / 10) * 100
+            self.auto_detect_btn.config(text=f'Đang nhận diện... {progress:.0f}%')
+            
         self.after(200, self.auto_detect_face_loop)
 
     def stop_processes(self):
@@ -321,78 +354,119 @@ class DataEntryFrame(tk.Frame):
         self.capture_btn.pack(side='left', padx=10)
 
     def save_captured_images(self):
-        DB_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "database", "database.db")
-        if self.detected_name:  # User đã có
-            name = self.detected_name
-            valid_count = 0
-            invalid_count = 0
-            # Lấy user_id từ tên
-            conn = sqlite3.connect(DB_PATH)
-            cur = conn.cursor()
-            cur.execute("SELECT user_id FROM users WHERE username=?", (name,))
-            row = cur.fetchone()
-            user_id = row[0] if row else None
-            conn.close()
-            for i, img_data in enumerate(self.pending_images):
-                img = cv2.cvtColor(img_data, cv2.COLOR_BGR2RGB)
-                img = cv2.resize(img, (160, 160))
-                pred_name, conf = self.recog_simple.predict_name(img)
-                if pred_name == name and conf > 0.65:
-                    person_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'images_attendance', f"user_{user_id}")
-                    os.makedirs(person_dir, exist_ok=True)
+        DB_PATH = get_database_path()
+        
+        # Kiểm tra xem người đã có trong database chưa
+        name = self.name_entry.get().strip()
+        if not name:
+            messagebox.showerror("Lỗi", "Tên không được để trống khi lưu.")
+            return
+            
+        # Kiểm tra trong database
+        conn = sqlite3.connect(DB_PATH)
+        cur = conn.cursor()
+        # Kiểm tra user không phân biệt chữ hoa/thường
+        cur.execute("SELECT user_id, username FROM users WHERE LOWER(username) = ?", (name.lower(),))
+        row = cur.fetchone()
+        conn.close()
+        
+        if not row:
+            # User không tồn tại trong hệ thống
+            messagebox.showerror("Lỗi", f"Người dùng '{name}' chưa có trong hệ thống. Vui lòng nhập tên người dùng đã có sẵn hoặc tạo user mới trước.")
+            self.controller.write_log(f"Không thể lưu ảnh: User '{name}' chưa có trong hệ thống.")
+            return
+            
+        user_id, actual_username = row
+        
+        valid_count = 0
+        invalid_count = 0
+        person_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'images_attendance', f"user_{user_id}")
+        os.makedirs(person_dir, exist_ok=True)
+        
+        # Kiểm tra xem user đã có ảnh chưa
+        has_existing_images = self.check_user_has_images(user_id)
+        
+        for i, img_data in enumerate(self.pending_images):
+            img = cv2.cvtColor(img_data, cv2.COLOR_BGR2RGB)
+            img = cv2.resize(img, (160, 160))
+            pred_name, conf = self.recog_simple.predict_name(img)
+            
+            if has_existing_images:
+                # HƯỚNG 1: User đã có ảnh trong hệ thống
+                # Chỉ lưu ảnh nhận diện đúng tên, sai tên thì bỏ
+                if pred_name == actual_username and conf > 0.65:
+                    # Nhận diện đúng người
                     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S_%f')
                     filename = os.path.join(person_dir, f"{timestamp}.jpg")
                     cv2.imwrite(filename, img_data)
                     # Cập nhật DB
-                    if user_id:
-                        conn = sqlite3.connect(DB_PATH)
-                        cur = conn.cursor()
-                        cur.execute("INSERT INTO face_profiles (user_id, image_path) VALUES (?, ?)", (user_id, filename))
-                        conn.commit()
-                        conn.close()
+                    conn = sqlite3.connect(DB_PATH)
+                    cur = conn.cursor()
+                    cur.execute("INSERT INTO face_profiles (user_id, image_path) VALUES (?, ?)", (user_id, filename))
+                    conn.commit()
+                    conn.close()
                     valid_count += 1
                 else:
+                    # Nhận diện sai người hoặc không có khuôn mặt
                     invalid_count += 1
+            else:
+                # HƯỚNG 2: User chưa có ảnh trong hệ thống
+                # Lưu các ảnh có khuôn mặt và nhận diện không thành công (Unknown)
+                gray = cv2.cvtColor(img_data, cv2.COLOR_BGR2GRAY)
+                faces = self.recog_simple.face_cascade.detectMultiScale(gray, 1.1, 4)
+                
+                if len(faces) > 0 and pred_name == "Unknown":
+                    # Có khuôn mặt và nhận diện không thành công (Unknown)
+                    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S_%f')
+                    filename = os.path.join(person_dir, f"{timestamp}.jpg")
+                    cv2.imwrite(filename, img_data)
+                    # Cập nhật DB
+                    conn = sqlite3.connect(DB_PATH)
+                    cur = conn.cursor()
+                    cur.execute("INSERT INTO face_profiles (user_id, image_path) VALUES (?, ?)", (user_id, filename))
+                    conn.commit()
+                    conn.close()
+                    valid_count += 1
+                else:
+                    # Không có khuôn mặt hoặc nhận diện được người khác
+                    invalid_count += 1
+                
+        if not has_existing_images:
+            self.controller.write_log(f"Đã lưu {valid_count} ảnh đầu tiên cho người dùng '{actual_username}', loại bỏ {invalid_count} ảnh không đúng.")
+            messagebox.showinfo("Kết quả", f"Đã lưu {valid_count} ảnh đầu tiên cho người dùng '{actual_username}', loại bỏ {invalid_count} ảnh không đúng.")
+        else:
             self.controller.write_log(f"Đã lưu {valid_count} ảnh hợp lệ, loại bỏ {invalid_count} ảnh không đúng.")
             messagebox.showinfo("Kết quả", f"Đã lưu {valid_count} ảnh hợp lệ, loại bỏ {invalid_count} ảnh không đúng.")
-            self.clear_pending_images()
-        else:  # User mới
-            name = self.name_entry.get().strip()
-            if not name:
-                messagebox.showerror("Lỗi", "Tên không được để trống khi lưu.")
-                return
-            user_id = self.create_new_user_in_db(name)
-            if user_id is None:
-                messagebox.showerror("Lỗi", "Tên này đã tồn tại, vui lòng nhập tên khác!")
-                return
-            person_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'images_attendance', f"user_{user_id}")
-            os.makedirs(person_dir, exist_ok=True)
-            valid_count = 0
-            duplicate_count = 0
-            for i, img_data in enumerate(self.pending_images):
-                img = cv2.cvtColor(img_data, cv2.COLOR_BGR2RGB)
-                img = cv2.resize(img, (160, 160))
-                pred_name, conf = self.recog_simple.predict_name(img)
-                # Nếu predict ra tên khác Unknown và khác tên mới, tức là trùng người cũ
-                if pred_name != "Unknown" and pred_name != name and conf > 0.65:
-                    duplicate_count += 1
-                    continue
-                if pred_name == "Unknown" or conf < 0.65:
-                    duplicate_count += 1
-                    continue
-                timestamp = datetime.now().strftime('%Y%m%d_%H%M%S_%f')
-                filename = os.path.join(person_dir, f"{timestamp}.jpg")
-                cv2.imwrite(filename, img_data)
-                # Cập nhật DB
-                conn = sqlite3.connect(DB_PATH)
-                cur = conn.cursor()
-                cur.execute("INSERT INTO face_profiles (user_id, image_path) VALUES (?, ?)", (user_id, filename))
-                conn.commit()
-                conn.close()
-                valid_count += 1
-            self.controller.write_log(f"Đã lưu {valid_count} ảnh mới, loại bỏ {duplicate_count} ảnh trùng với người cũ hoặc không phát hiện mặt.")
-            messagebox.showinfo("Kết quả", f"Đã lưu {valid_count} ảnh mới, loại bỏ {duplicate_count} ảnh trùng với người cũ hoặc không phát hiện mặt.")
-            self.clear_pending_images()
+        
+        # Sau khi lưu xong, kiểm tra tính toàn vẹn dữ liệu
+        if valid_count > 0:
+            self.verify_saved_images(user_id)
+        
+        self.clear_pending_images()
+
+    def verify_saved_images(self, user_id):
+        """Kiểm tra và sửa chữa tính toàn vẹn dữ liệu sau khi lưu"""
+        DB_PATH = get_database_path()
+        conn = sqlite3.connect(DB_PATH)
+        cur = conn.cursor()
+        
+        # Lấy tất cả ảnh của user từ DB
+        cur.execute("SELECT profile_id, image_path FROM face_profiles WHERE user_id = ?", (user_id,))
+        db_images = cur.fetchall()
+        
+        # Kiểm tra ảnh nào không tồn tại
+        deleted_count = 0
+        for profile_id, image_path in db_images:
+            if not os.path.exists(image_path):
+                cur.execute("DELETE FROM face_profiles WHERE profile_id = ?", (profile_id,))
+                deleted_count += 1
+                self.controller.write_log(f"Đã xóa record ảnh không tồn tại: {image_path}")
+        
+        if deleted_count > 0:
+            conn.commit()
+            self.controller.write_log(f"Đã dọn dẹp {deleted_count} record ảnh không tồn tại")
+        
+        conn.close()
 
     def clear_pending_images(self, clear_ui=True):
         self.pending_images.clear()
@@ -420,6 +494,25 @@ class DataEntryFrame(tk.Frame):
             EnlargedFaceWindow(self, 'Preview', img)
         thumb_label.bind('<Button-1>', show_preview)
 
+    def sync_database_before_training(self):
+        """Đồng bộ database với folder trước khi train"""
+        try:
+            # Import function đồng bộ từ training module
+            from training.check_training_data import sync_images_from_folders
+            
+            self.controller.write_log("Đang đồng bộ database với folder ảnh...")
+            sync_results = sync_images_from_folders()
+            
+            if sync_results:
+                self.controller.write_log(f"Đã đồng bộ DB: {sync_results['total_images_found']} ảnh")
+                if sync_results['deleted_from_db'] > 0 or sync_results['added_to_db'] > 0:
+                    self.controller.write_log(f"   - Xóa: {sync_results['deleted_from_db']}, Thêm: {sync_results['added_to_db']}")
+            else:
+                self.controller.write_log("Không thể đồng bộ database")
+                
+        except Exception as e:
+            self.controller.write_log(f"Lỗi khi đồng bộ database: {e}")
+
     def start_training(self):
         if self.pending_images:
             if not messagebox.askyesno("Xác nhận", "Bạn có ảnh chưa được lưu. Nếu tiếp tục huấn luyện, các ảnh này sẽ bị mất. Bạn có muốn tiếp tục không?"):
@@ -432,6 +525,10 @@ class DataEntryFrame(tk.Frame):
         self.save_btn.config(state='disabled')
         self.clear_btn.config(state='disabled')
         self.train_btn.config(state='disabled', text='Đang huấn luyện...')
+        
+        # Đồng bộ DB với folder trước khi train
+        self.sync_database_before_training()
+        
         self.controller.write_log("Bắt đầu quá trình huấn luyện lại (chế độ: thông minh)...")
         threading.Thread(target=self._run_train_script_with_mode, args=("--smart",), daemon=True).start()
 
@@ -486,20 +583,38 @@ class DataEntryFrame(tk.Frame):
         self._log_scroll_start_y = None
         self._log_scroll_start_view = None
 
-    def create_new_user_in_db(self, name):
-        DB_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "database", "database.db")
+    def check_user_has_images(self, user_id):
+        """Kiểm tra xem user đã có ảnh trong thư mục chưa"""
+        person_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'images_attendance', f"user_{user_id}")
+        if not os.path.exists(person_dir):
+            return False
+        image_files = [f for f in os.listdir(person_dir) if f.lower().endswith(('.jpg', '.jpeg', '.png'))]
+        return len(image_files) > 0
+
+    def check_user_status(self, event=None):
+        """Kiểm tra và hiển thị trạng thái của user khi nhập tên"""
+        name = self.name_entry.get().strip()
+        if not name:
+            return
+            
+        DB_PATH = get_database_path()
         conn = sqlite3.connect(DB_PATH)
         cur = conn.cursor()
-        # Kiểm tra trùng tên
-        cur.execute("SELECT COUNT(*) FROM users WHERE username = ?", (name,))
-        if cur.fetchone()[0] > 0:
-            conn.close()
-            return None  # Tên đã tồn tại
-        cur.execute("INSERT INTO users (username, full_name, password) VALUES (?, ?, ?)", (name, name, "1"))
-        user_id = cur.lastrowid
-        conn.commit()
+        
+        # Kiểm tra user không phân biệt chữ hoa/thường
+        cur.execute("SELECT user_id, username FROM users WHERE LOWER(username) = ?", (name.lower(),))
+        row = cur.fetchone()
         conn.close()
-        return user_id
+        
+        if row:
+            user_id, actual_username = row
+            has_images = self.check_user_has_images(user_id)
+            if has_images:
+                self.controller.write_log(f"Người dùng '{actual_username}' đã có trong hệ thống và có ảnh.")
+            else:
+                self.controller.write_log(f"Người dùng '{actual_username}' đã có trong hệ thống nhưng chưa có ảnh. Có thể thêm ảnh.")
+        else:
+            self.controller.write_log(f"Người dùng '{name}' chưa có trong hệ thống.")
 
     def show_keyboard_frame(self, event=None):
         if self.keyboard_frame is None or not self.keyboard_frame.winfo_ismapped():
@@ -521,6 +636,12 @@ class DataEntryFrame(tk.Frame):
 
     def start_auto_detect(self):
         """Bắt đầu nhận diện tự động 10 frame đầu tiên"""
+        if self._auto_detect_running:
+            self.controller.write_log("Nhận diện tự động đang chạy...")
+            return
+            
+        self.controller.write_log("Bắt đầu nhận diện tự động...")
+        self.auto_detect_btn.config(state='disabled', text='Đang nhận diện...')
         self._auto_detect_running = True
         self._auto_detect_names = []  # Danh sách lưu kết quả tên predict
         self._auto_detect_confs = []  # Danh sách lưu xác suất

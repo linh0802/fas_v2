@@ -13,6 +13,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from .db import get_db_connection
+from config import get_database_path
 
 def export_users_to_csv():
     """Xuất dữ liệu users từ database ra file CSV."""
@@ -20,7 +21,7 @@ def export_users_to_csv():
     print("=" * 50)
     
     # Kiểm tra database có tồn tại không
-    db_path = os.path.join(os.path.dirname(__file__), 'database.db')
+    db_path = get_database_path()
     if not os.path.exists(db_path):
         print("❌ Database không tồn tại!")
         print(f"Đường dẫn: {db_path}")

@@ -29,6 +29,15 @@
                             <a href="#" class="custom-btn custom-border-btn btn" data-bs-toggle="modal" data-bs-target="#infoModal">Thông tin
                                 <i class="bi-arrow-right ms-2"></i>
                             </a>
+                            {% if session.get('logged_in') %}
+                                <a href="{{ url_for('logout') }}" class="custom-btn custom-border-btn btn ms-2">
+                                    <i class="bi-person-check me-2"></i>Đăng xuất ({{ session.get('username', '') }})
+                                </a>
+                            {% else %}
+                                <a href="{{ url_for('login') }}" class="custom-btn custom-border-btn btn ms-2">
+                                    <i class="bi-person me-2"></i>Đăng nhập
+                                </a>
+                            {% endif %}
                         </div>
                         <a class="bi-list offcanvas-icon" data-bs-toggle="offcanvas" href="#offcanvasMenu" role="button" aria-controls="offcanvasMenu"></a>
                     </div>
@@ -49,7 +58,9 @@
                             <a href="#">Nhân viên</a>
                             <ul>
                                 <li><a href="{{ url_for('face_data') }}">Dữ liệu điểm danh</a></li>
-                                <li><a href="{{ url_for('train_face_page') }}">Nhập dữ liệu nhận diện</a></li>
+                                {% if not session.get('logged_in') %}
+                                    <li><a href="{{ url_for('train_face_page') }}">Nhập dữ liệu nhận diện</a></li>
+                                {% endif %}
                             </ul>
                         </li>
 
@@ -59,7 +70,17 @@
                                 <li><a href="{{ url_for('guest_register') }}">Đăng ký tham dự</a></li>
                             </ul>
                         </li>
-                        <li><a href="{{ url_for('contact') }}">Liên hệ</a></li>
+                        {% if session.get('logged_in') %}
+                            <li>
+                                <a href="#">Tài khoản ({{ session.get('username', '') }})</a>
+                                <ul>
+                                    <li><a href="{{ url_for('train_face_page') }}">Nhập dữ liệu nhận diện</a></li>
+                                    <li><a href="{{ url_for('logout') }}">Đăng xuất</a></li>
+                                </ul>
+                            </li>
+                        {% else %}
+                            <li><a href="{{ url_for('login') }}">Đăng nhập</a></li>
+                        {% endif %}
                     </ul>
                 </nav>
             </div>
@@ -95,11 +116,19 @@
             <div class="container">
                 <div class="row">
                     <div class="col-lg-8 col-12 mx-auto text-center">
-                        <h1 class="text-white mb-4">Chào mừng đến với hệ thống điểm danh bằng khuôn mặt!</h1>
-                        <p class="text-white">Một giải pháp hiện đại cho việc quản lý điểm danh nhân viên và khách mời.</p>
+                        {% if session.get('logged_in') %}
+                            <h1 class="text-white mb-4">Chào mừng {{ session.get('full_name', session.get('username', '')) }}!</h1>
+                            <p class="text-white">Bạn đã đăng nhập thành công. Hãy sử dụng các chức năng dành cho nhân viên.</p>
+                        {% else %}
+                            <h1 class="text-white mb-4">Chào mừng đến với hệ thống điểm danh bằng khuôn mặt!</h1>
+                            <p class="text-white">Một giải pháp hiện đại cho việc quản lý điểm danh nhân viên và khách mời.</p>
+                        {% endif %}
                         <div class="mt-5">
                             <a href="{{ url_for('face_data') }}" class="btn custom-btn smoothscroll me-2">Nhân viên</a>
                             <a href="{{ url_for('guest_register') }}" class="btn custom-btn smoothscroll">Khách mời</a>
+                            {% if session.get('logged_in') %}
+                                <a href="{{ url_for('train_face_page') }}" class="btn custom-btn smoothscroll ms-2">Nhập dữ liệu nhận diện</a>
+                            {% endif %}
                         </div>
                     </div>
                 </div>
@@ -107,7 +136,7 @@
 
             <div class="video-wrap">
                 <video autoplay loop muted class="custom-video" poster="">
-                    <source src="{{ url_for('static', filename='videos/web.mp4') }}" type="video/mp4">
+                    <source src="{{ url_for('static', filename='videos/video.mp4') }}" type="video/mp4">
                     Your browser does not support the video tag.
                 </video>
             </div>

@@ -7,8 +7,14 @@ Chức năng chính: kết nối, khởi tạo, và đồng bộ dữ liệu.
 import sqlite3
 import csv
 import os
+import sys
 
-DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "database.db")
+# Thêm thư mục cha vào path để import config
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from config import get_database_path
+
+# Sử dụng đường dẫn từ config
+DB_PATH = get_database_path()
 CSV_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "users_export.csv")
 
 def get_db_connection():

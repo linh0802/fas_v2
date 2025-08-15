@@ -73,7 +73,7 @@ def validate_training_data():
             missing_images.append(profile['image_path'])
     
     if missing_images:
-        issues.append(f"Có {len(missing_images)} ảnh không tồn tại trên disk")
+        warnings.append(f"Có {len(missing_images)} ảnh không tồn tại trên disk")
     
     # Kiểm tra duplicate image paths
     cur.execute("SELECT image_path, COUNT(*) as count FROM face_profiles GROUP BY image_path HAVING count > 1")
@@ -117,13 +117,37 @@ def print_validation_result():
             print(f"  - {img}")
         if len(result['missing_images']) > 5:
             print(f"  ... và {len(result['missing_images']) - 5} ảnh khác")
-    
-    if result['duplicate_images']:
-        print(f"\n🔄 Ảnh bị duplicate ({len(result['duplicate_images'])}):")
-        for img in result['duplicate_images'][:5]:
-            print(f"  - {img}")
-        if len(result['duplicate_images']) > 5:
-            print(f"  ... và {len(result['duplicate_images']) - 5} ảnh khác")
+        # Hỏi người dùng có muốn dọn dẹp DB ngay không
+        try:
+            confirm = input("\nBạn có muốn xóa các ảnh không tồn tại khỏi database ngay bây giờ? (y/N): ").strip().lower()
+        except Exception:
+            confirm = 'n'
+        if confirm == 'y':
+            cleanup_missing_images(result['missing_images'])
+            # Sau khi dọn dẹp, chạy lại validation để cập nhật hiển thị
+            print("\n🔄 Đang kiểm tra lại sau khi dọn dẹp...")
+            result = validate_training_data()
+            if not result['missing_images']:
+                print("✅ Đã dọn dẹp: không còn ảnh không tồn tại trong DB")
+            else:
+                print(f"⚠️  Vẫn còn {len(result['missing_images'])} ảnh không tồn tại")
+
+def cleanup_missing_images(missing_images):
+    """Xóa các bản ghi ảnh không tồn tại khỏi bảng face_profiles."""
+    import sqlite3
+    db_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'database', 'database.db')
+    conn = sqlite3.connect(db_path)
+    cur = conn.cursor()
+    deleted = 0
+    for img_path in missing_images:
+        try:
+            cur.execute("DELETE FROM face_profiles WHERE image_path = ?", (img_path,))
+            deleted += cur.rowcount or 0
+        except Exception:
+            continue
+    conn.commit()
+    conn.close()
+    print(f"✅ Đã xóa {deleted} bản ghi ảnh không tồn tại khỏi database")
 
 def print_user_mapping():
     """In ra mapping user_id -> full_name."""
@@ -409,9 +433,143 @@ def export_error_report(results):
     
     print(f"\n📄 Đã export báo cáo lỗi ra file: {filename}")
 
+def update_user_id_to_fullname_file():
+    """Cập nhật file user_id_to_fullname.json từ database trước khi kiểm tra."""
+    print("\n🔄 CẬP NHẬT FILE MAPPING...")
+    
+    import sqlite3
+    
+    def get_db_connection():
+        db_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'database', 'database.db')
+        conn = sqlite3.connect(db_path)
+        conn.row_factory = sqlite3.Row
+        return conn
+    
+    conn = get_db_connection()
+    cur = conn.cursor()
+    
+    # Lấy mapping từ database
+    cur.execute("""
+        SELECT u.user_id, u.full_name
+        FROM users u
+        WHERE u.full_name IS NOT NULL AND u.full_name != ''
+        ORDER BY u.user_id
+    """)
+    users = cur.fetchall()
+    
+    # Tạo mapping mới
+    user_id_to_fullname = {}
+    for user in users:
+        user_id_to_fullname[str(user['user_id'])] = user['full_name']
+    
+    conn.close()
+    
+    # Lưu vào file
+    json_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'user_id_to_fullname.json')
+    with open(json_path, 'w', encoding='utf-8') as f:
+        json.dump(user_id_to_fullname, f, ensure_ascii=False, indent=2)
+    
+    print(f"✅ Đã cập nhật file mapping với {len(user_id_to_fullname)} users")
+    print(f"📁 File: {json_path}")
+    return user_id_to_fullname
+
+def sync_images_from_folders():
+    """Đồng bộ database với thực tế folder ảnh."""
+    print("\n🔄 ĐỒNG BỘ ẢNH TỪ FOLDERS VỚI DATABASE")
+    print("=" * 50)
+    
+    import sqlite3
+    
+    def get_db_connection():
+        db_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'database', 'database.db')
+        conn = sqlite3.connect(db_path)
+        conn.row_factory = sqlite3.Row
+        return conn
+    
+    # Đường dẫn thư mục ảnh
+    images_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'images_attendance')
+    if not os.path.exists(images_path):
+        print("❌ Thư mục images_attendance không tồn tại!")
+        return
+    
+    conn = get_db_connection()
+    cur = conn.cursor()
+    
+    # Lấy danh sách ảnh hiện tại trong DB
+    cur.execute("SELECT profile_id, user_id, image_path FROM face_profiles")
+    db_images = {row['image_path']: {'profile_id': row['profile_id'], 'user_id': row['user_id']} for row in cur.fetchall()}
+    
+    # Quét thực tế từ folders
+    folder_images = {}
+    total_images_found = 0
+    
+    for folder in os.listdir(images_path):
+        if folder.startswith('user_'):
+            try:
+                user_id = int(folder.split('_')[1])
+                folder_path = os.path.join(images_path, folder)
+                
+                if os.path.isdir(folder_path):
+                    # Lấy tất cả ảnh trong folder
+                    images = [f for f in os.listdir(folder_path) 
+                             if f.lower().endswith(('.jpg', '.jpeg', '.png'))]
+                    
+                    folder_images[user_id] = []
+                    for img in images:
+                        full_path = os.path.join(folder_path, img)
+                        folder_images[user_id].append(full_path)
+                        total_images_found += 1
+                        
+            except (ValueError, IndexError):
+                print(f"⚠️  Bỏ qua folder không đúng format: {folder}")
+                continue
+    
+    print(f"📁 Tìm thấy {len(folder_images)} folders user")
+    print(f"📸 Tổng số ảnh trong folders: {total_images_found}")
+    print(f"📊 Số ảnh trong DB: {len(db_images)}")
+    
+    # Xóa ảnh không tồn tại trong DB
+    deleted_count = 0
+    for db_path in list(db_images.keys()):
+        if not os.path.exists(db_path):
+            cur.execute("DELETE FROM face_profiles WHERE profile_id = ?", (db_images[db_path]['profile_id'],))
+            deleted_count += 1
+    
+    # Thêm ảnh mới vào DB
+    added_count = 0
+    for user_id, image_paths in folder_images.items():
+        # Kiểm tra user có tồn tại trong DB không
+        cur.execute("SELECT user_id FROM users WHERE user_id = ?", (user_id,))
+        if not cur.fetchone():
+            print(f"⚠️  User ID {user_id} không tồn tại trong DB, bỏ qua folder user_{user_id}")
+            continue
+            
+        for img_path in image_paths:
+            if img_path not in db_images:
+                cur.execute("INSERT INTO face_profiles (user_id, image_path) VALUES (?, ?)", (user_id, img_path))
+                added_count += 1
+    
+    conn.commit()
+    conn.close()
+    
+    print(f"🗑️  Đã xóa {deleted_count} ảnh không tồn tại khỏi DB")
+    print(f"➕ Đã thêm {added_count} ảnh mới vào DB")
+    print(f"✅ Đồng bộ hoàn tất!")
+    
+    return {
+        'folders_scanned': len(folder_images),
+        'total_images_found': total_images_found,
+        'deleted_from_db': deleted_count,
+        'added_to_db': added_count
+    }
+
 def main():
     print("🔍 KIỂM TRA DỮ LIỆU TRAINING")
     print("=" * 60)
+    
+    # 0. ĐỒNG BỘ ẢNH TỪ FOLDERS TRƯỚC KHI KIỂM TRA
+    sync_results = sync_images_from_folders()
+    print()
     
     # 1. Kiểm tra trạng thái database
     check_database_status()
@@ -425,22 +583,25 @@ def main():
     print_validation_result()
     print()
     
-    # 4. In mapping user_id -> full_name
+    # 4. CẬP NHẬT FILE MAPPING TRƯỚC KHI KIỂM TRA
+    update_user_id_to_fullname_file()
+    
+    # 5. In mapping user_id -> full_name
     print_user_mapping()
     print()
     
-    # 5. Phát hiện lỗi mapping
+    # 6. Phát hiện lỗi mapping (sau khi đã cập nhật file)
     mapping_results = detect_mapping_errors()
     print_mapping_errors(mapping_results)
     
-    # 6. Export thông tin chi tiết
+    # 7. Export thông tin chi tiết
     print("\n📊 Export thông tin chi tiết...")
     summary = export_training_data_info()
     
-    # 7. Export báo cáo lỗi mapping (chỉ khi có lỗi)
+    # 8. Export báo cáo lỗi mapping (chỉ khi có lỗi)
     export_error_report(mapping_results)
     
-    # 8. Tóm tắt
+    # 9. Tóm tắt
     print("\n" + "=" * 60)
     print("TÓM TẮT")
     print("=" * 60)
@@ -456,13 +617,25 @@ def main():
     print(f"🔍 Lỗi mapping: {len(mapping_results['errors'])}")
     print(f"⚠️  Cảnh báo mapping: {len(mapping_results['warnings'])}")
     
+    # Thêm thông tin đồng bộ
+    if sync_results:
+        print(f"🔄 Đồng bộ: {sync_results['folders_scanned']} folders, {sync_results['total_images_found']} ảnh")
+        if sync_results['deleted_from_db'] > 0 or sync_results['added_to_db'] > 0:
+            print(f"   - Xóa: {sync_results['deleted_from_db']}, Thêm: {sync_results['added_to_db']}")
+    
     if validation['is_valid'] and len(mapping_results['errors']) == 0:
         print("\n🎉 Dữ liệu sẵn sàng để train!")
         print("Bạn có thể chạy: python finish_train.py")
     else:
         print("\n❌ Cần sửa lỗi trước khi train!")
-        print("Vui lòng chạy: python fix_database.py để sửa lỗi")
+        if len(mapping_results['errors']) > 0:
+            print("Vui lòng chạy: python fix_database.py để sửa lỗi")
         print("Sau đó chạy lại: python check_training_data.py")
+        
+        # Thông báo thêm về việc đã cập nhật file mapping
+        if len(mapping_results['errors']) == 0:
+            print("\n💡 Lưu ý: File mapping đã được cập nhật tự động!")
+            print("Các lỗi khác cần được sửa thủ công.")
 
 if __name__ == "__main__":
     main() 
