@@ -70,7 +70,7 @@ $ python gui_modules/gui_main.py
 - Cấu hình biến môi trường email, ngrok nếu dùng tính năng gửi QR/email/điểm danh từ xa.
 
 ## Hướng dẫn sử dụng
-- **Thêm người mới:** Vào giao diện, nhập/tự động nhận diện tên, chụp ảnh, lưu, huấn luyện lại model.
+- **Thêm ảnh huấn luyện:** Vào giao diện, nhập/tự động nhận diện tên, chụp ảnh, lưu, huấn luyện lại model.
 - **Điểm danh:** Chọn tab nhận diện, hệ thống tự động nhận diện, log, phát âm tên, lưu lịch sử.
 - **Xem dữ liệu:** Tab dữ liệu điểm danh, có thể xuất CSV, xem log, lọc dữ liệu.
 - **Huấn luyện lại:** Sau khi thêm người mới, nhấn "Huấn luyện" để cập nhật model.
@@ -90,7 +90,7 @@ $ python gui_modules/gui_main.py
 - `logs/`, `training.log`: Log hệ thống, log train.
 - `requirements.txt`, `.gitignore`, `README.md`
 
-## Cấu trúc thư mục (Cập nhật 2024)
+## Cấu trúc thư mục
 ```
 faceattendance/
 ├── core/
